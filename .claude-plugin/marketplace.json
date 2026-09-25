@@ -1,0 +1,17 @@
+{
+  "name": "sub-agent-compact",
+  "description": "Separate auto-compact points for the Claude Code main chat and each sub-agent.",
+  "owner": {
+    "name": "rezzminator",
+    "url": "https://github.com/rezzminator"
+  },
+  "plugins": [
+    {
+      "name": "sub-agent-compact",
+      "source": "./",
+      "description": "Separate auto-compact points for the main chat and for each sub-agent.",
+      "version": "0.1.0",
+      "license": "MIT"
+    }
+  ]
+}

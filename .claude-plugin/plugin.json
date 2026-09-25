@@ -1,0 +1,34 @@
+{
+  "name": "sub-agent-compact",
+  "version": "0.1.0",
+  "description": "Separate auto-compact points for the main chat and for each sub-agent, keyed on the agent identity Claude Code's function hooks carry.",
+  "license": "MIT",
+  "author": { "name": "Reza", "url": "https://github.com/rezzminator" },
+  "repository": "https://github.com/rezzminator/sub-agent-compact",
+  "userConfig": {
+    "mainAutoCompact": {
+      "type": "string",
+      "title": "Main chat auto-compact point",
+      "description": "Context tokens at which the main chat compacts: an integer or a k/m suffix (\"600k\", \"0.6m\").",
+      "default": "600000"
+    },
+    "subagentAutoCompact": {
+      "type": "string",
+      "title": "Sub-agent auto-compact point",
+      "description": "Context tokens at which a sub-agent compacts when its agent definition carries no autoCompact frontmatter: an integer or a k/m suffix.",
+      "default": "150000"
+    },
+    "agentDirs": {
+      "type": "string",
+      "title": "Extra agent-definition directories",
+      "description": "Comma-separated directories searched for agent definitions after <cwd>/.claude/agents and ~/.claude/agents.",
+      "default": ""
+    },
+    "logFile": {
+      "type": "string",
+      "title": "Decision log file",
+      "description": "Absolute path of a JSONL file that records every compaction decision; empty for none.",
+      "default": ""
+    }
+  }
+}

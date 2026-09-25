@@ -1,0 +1,21 @@
+{
+  "name": "sub-agent-compact",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Code plugin: separate auto-compact points for the main chat and for each sub-agent.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.hooks.json",
+    "validate:plugin": "claude plugin validate ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
+  }
+}
