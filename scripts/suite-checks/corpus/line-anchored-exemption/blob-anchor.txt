@@ -1,0 +1,1 @@
+https://example.com/sample/blob/main/src/log.ts#L18

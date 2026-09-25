@@ -1,0 +1,2 @@
+      - run: scripts/dev.sh gate
+        continue-on-error: true

@@ -1,0 +1,1 @@
+execSync('npx tsc --noEmit');

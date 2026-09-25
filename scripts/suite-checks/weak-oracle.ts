@@ -1,0 +1,11 @@
+# weak oracle: existence, truthiness, a length alone, any value, a class without its code
+[.]toBeTruthy[(]
+[.]toBeFalsy[(]
+[.]toBeDefined[(]
+[.]not[.]toBeNull[(]
+[.]not[.]toBeUndefined[(]
+expect[.]anything[(]
+[.]toHaveLength[(]
+[.]toThrow[(](Error|TypeError|RangeError)?[)]
+[.]toBeInstanceOf[(]
+[.]toBeGreaterThan[(]0[)]

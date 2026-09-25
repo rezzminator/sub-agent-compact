@@ -1,0 +1,1 @@
+truncateSync(logPath, 0);

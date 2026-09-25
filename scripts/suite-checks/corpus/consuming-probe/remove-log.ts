@@ -1,0 +1,1 @@
+rmSync(logPath, { force: true });
