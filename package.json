@@ -1,6 +1,6 @@
 {
   "name": "sub-agent-compact",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Claude Code plugin: separate auto-compact points for the main chat and for each sub-agent.",
   "type": "module",

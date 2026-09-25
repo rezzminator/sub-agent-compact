@@ -35,8 +35,13 @@ This plugin decides per party:
   cache-read and cache-creation tokens are summed. That usage lags one step
   behind, because it misses the tool results that arrived since. So the
   plugin also estimates the transcript it was handed (about 3.5 characters a
-  token) and uses whichever figure is larger. A batch of parallel reads
-  therefore can't slip past a limit.
+  token) and uses whichever figure is larger, so the lag never holds a
+  party that is already past its limit.
+- The check runs once per model request, so a party can pass its limit by
+  up to one step of tool output before it is asked. In a live run of four
+  executors limited to 100k, compactions landed between 100k and 177k, the
+  high ones right after a step that read several whole files at once. Where
+  a limit is tight, have the agent read in smaller batches.
 - When the main chat's limit is below Claude Code's window, the plugin
   compacts the main chat itself between turns, once it reaches the limit.
 
@@ -78,7 +83,11 @@ To develop locally: `claude --plugin-dir /path/to/sub-agent-compact`.
 ## Options
 
 Set these through `/config`, or under
-`pluginConfigs["sub-agent-compact"].options` in `settings.json`. A limit is
+`pluginConfigs["sub-agent-compact@sub-agent-compact"].options` in
+`settings.json`. The key is the full plugin id, `{plugin}@{marketplace}`:
+Claude Code accepts a bare plugin name only for plugins from its official
+marketplace, and silently ignores options under any other key, so the plugin
+runs on its defaults. A limit is
 an integer or a number with a k/m suffix (`"150k"`, `"0.6m"`). A bad value is
 logged by name and replaced by the default. It is never ignored silently.
 
@@ -87,13 +96,13 @@ logged by name and replaced by the default. It is never ignored silently.
 | `mainAutoCompact` | `600000` | Context tokens at which the main chat compacts. |
 | `subagentAutoCompact` | `150000` | Context tokens for a sub-agent whose definition has no `autoCompact`. This covers built-ins such as `general-purpose` and `Explore`. |
 | `agentDirs` | empty | Comma-separated extra directories of agent definitions. |
-| `logFile` | empty | Absolute path of a JSONL log with one row per decision. |
+| `logFile` | empty | Absolute path of the JSONL decision log. Each session writes its own file, with the session id before the extension: `decisions.jsonl` gives `decisions.{session-id}.jsonl`. A resumed session appends to its file. |
 
 ```json
 {
   "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1" },
   "pluginConfigs": {
-    "sub-agent-compact": {
+    "sub-agent-compact@sub-agent-compact": {
       "options": { "mainAutoCompact": "400k", "subagentAutoCompact": "100k" }
     }
   }

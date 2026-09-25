@@ -1,6 +1,6 @@
 {
   "name": "sub-agent-compact",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Separate auto-compact points for the main chat and for each sub-agent, keyed on the agent identity Claude Code's function hooks carry.",
   "license": "MIT",
   "author": { "name": "Reza", "url": "https://github.com/rezzminator" },

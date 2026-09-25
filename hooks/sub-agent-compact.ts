@@ -2,6 +2,7 @@ import type { EngineInterface, On, PluginOptions, Register } from 'claude-code';
 import { AgentLimits } from '../src/agents.ts';
 import { contextTokens, currentTokens, decide } from '../src/decide.ts';
 import { resolveOptions, type ResolvedOptions } from '../src/limits.ts';
+import { appendRows, sessionLogPath } from '../src/log.ts';
 
 // Thin adapter: every decision lives in src/. Each hook catches its own
 // failures, logs them with context and lets the compaction through.
@@ -23,21 +24,35 @@ type State = {
   readings: Map<string, number>;
   asked: Set<string>;
   warned: Set<string>;
-  rows: string[];
+  pending: string[];
+  logPath?: Promise<string | undefined>;
   writing: Promise<void>;
   mainCompactedThisTurn: boolean;
   mainCompacting: boolean;
 };
 
+// Rows queue in memory; each flush reads the session's file and appends them,
+// so a resumed session keeps its earlier rows and no other chat shares the file.
 function record(st: State, $: EngineInterface, row: Row): void {
   const file = st.config.logFile;
   if (!file) return;
-  st.rows.push(JSON.stringify({ ts: new Date().toISOString(), ...row }));
-  if (st.rows.length > LOG_CAP) st.rows.splice(0, st.rows.length - LOG_CAP);
-  const text = st.rows.join('\n') + '\n';
+  st.pending.push(JSON.stringify({ ts: new Date().toISOString(), ...row }));
+  st.logPath ??= $.session.id().then(
+    (id) => sessionLogPath(file, id),
+    (error) => {
+      $.ui.log(`sub-agent-compact: reading the session id failed: ${message(error)}; the decision log is off for this session`);
+      return undefined;
+    },
+  );
   st.writing = st.writing
-    .then(() => $.fs.write(file, text))
-    .catch((error) => $.ui.log(`sub-agent-compact: writing the decision log ${file} failed: ${message(error)}`));
+    .then(async () => {
+      const path = await st.logPath;
+      const rows = st.pending.splice(0);
+      if (!path || rows.length === 0) return;
+      const existing = (await $.fs.exists(path)) ? await $.fs.read(path) : '';
+      await $.fs.write(path, appendRows(existing, rows, LOG_CAP));
+    })
+    .catch((error) => $.ui.log(`sub-agent-compact: writing the decision log for ${file} failed: ${message(error)}`));
 }
 
 function warnOnce(st: State, $: EngineInterface, key: string, line: string): void {
@@ -109,7 +124,7 @@ export const register: Register = (on: On, options: PluginOptions) => {
     readings: new Map(),
     asked: new Set(),
     warned: new Set(),
-    rows: [],
+    pending: [],
     writing: Promise.resolve(),
     mainCompactedThisTurn: false,
     mainCompacting: false,
