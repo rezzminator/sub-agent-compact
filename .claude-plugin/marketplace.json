@@ -9,9 +9,24 @@
     {
       "name": "sub-agent-compact",
       "source": "./",
-      "description": "Separate auto-compact points for the main chat and for each sub-agent.",
+      "description": "Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.",
       "version": "0.2.1",
-      "license": "MIT"
+      "license": "MIT",
+      "keywords": [
+        "claude-code",
+        "claude-code-plugin",
+        "sub-agent",
+        "subagent",
+        "auto-compact",
+        "compaction",
+        "context-window",
+        "smart-compact",
+        "self-compaction",
+        "function-hooks",
+        "claude-mods",
+        "multi-agent",
+        "token-cost"
+      ]
     }
   ]
 }

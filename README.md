@@ -1,194 +1,184 @@
+<div align="center">
+
 # sub-agent-compact
 
-A Claude Code plugin that gives the main chat and each sub-agent their own
-compaction policy. As a party's context grows, its model is nudged to reach
-a milestone and compact itself, and it chooses the moment and what the
-summary keeps. Each party also has a forced point where it compacts whether
-it asked or not. A reader sub-agent can run to 600k tokens, a quick lookup
-agent can compact at 80k, and the main chat can hold out until 600k. Claude
-Code on its own gives them all the same point.
+**Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.**
 
-> **Early access.** This plugin is built on Claude Code's function hooks,
-> which are an early-access surface that may change between releases. The
-> bundled `types/claude-code.d.ts` was written by Claude Code 2.1.282's
-> `/plugin-types`.
+[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue)](https://github.com/rezzminator/sub-agent-compact/commits/main)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+[![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)](#development)
 
-## Why
+**34% cheaper** than a sub-agent that never compacts · **42% faster** than a fixed auto-compact threshold at the same cost
 
-Claude Code compacts every conversation at one point: the auto-compact
-window. That window belongs to the whole process
-([anthropics/claude-code#90347](https://github.com/anthropics/claude-code/issues/90347)),
-so the main chat and every sub-agent it spawns compact at the same token count.
-The classic `PreCompact` hook can't separate them either, because its input
-carries no `agent_id`
-([anthropics/claude-code#91910](https://github.com/anthropics/claude-code/issues/91910)).
+</div>
 
-Function hooks can. The `session.compact` event carries `agentId` when a
-sub-agent's own transcript is compacting, and leaves it out for the main
-conversation. Answering `{ skip }` vetoes one automatic compaction. The veto
-costs nothing, because Claude Code asks again before its next model request.
-This plugin decides per party:
+```yaml
+---
+name: big-reader
+description: Reads large files in full.
+autoCompact:
+  forceAt: 60%      # compacts here even if the model never asked
+  nudgeFrom: 10%    # first nudge to reach a milestone and compact itself
+  nudgeEvery: 10%   # one more nudge at each step past the first
+  enabled: true     # false: never nudged or compacted automatically
+---
+```
 
-- A person's `/compact` and a plugin's compaction always pass.
-- An automatic compaction (`auto` or `precompute`) passes once the party's
-  model has asked to compact itself (see Self-compaction). The model's focus
-  becomes what the summarizer is told.
-- A party with automatic compaction off (`autoCompact.enabled: false`) has
-  every other automatic compaction held.
-- Otherwise an automatic compaction is held while that party's context is
-  below its forced point (`autoCompact`). It passes once the context reaches
-  that point.
-- The main chat's context comes from `$.session.usage()`. A sub-agent's
-  context comes from its own model responses: `turn.step` usage, where input,
-  cache-read and cache-creation tokens are summed. That usage lags one step
-  behind, because it misses the tool results that arrived since. So the
-  plugin also estimates the transcript it was handed (about 3.5 characters a
-  token) and uses whichever figure is larger, so the lag never holds a
-  party that is already past its limit.
-- The check runs once per model request, so a party can pass its limit by
-  up to one step of tool output before it is asked. In a live run of four
-  executors limited to 100k, compactions landed between 100k and 177k, the
-  high ones right after a step that read several whole files at once. Where
-  a limit is tight, have the agent read in smaller batches.
-- When the main chat's limit is below Claude Code's window, the plugin
-  compacts the main chat itself between turns, once it reaches the limit.
-  Claude Code 2.1.283 has no between-turn compaction in a headless (`-p`)
-  session. There the call fails, is logged, and the turn carries on.
+<sup>Add `autoCompact` to any agent's frontmatter in `.claude/agents/*.md`. Every key is optional; a key left out takes the central default. See <a href="#per-agent-policy-frontmatter">Per-agent policy</a>.</sup>
 
-If a lookup fails (usage, agent list, a definition file), the plugin logs it
-and lets the compaction through. It never holds a compaction because of an
-error.
+---
 
-## Self-compaction
+Claude Code compacts the main chat and every sub-agent at one shared
+auto-compact threshold. Long-running sub-agents therefore either re-send a
+huge context on every tool call, or get compacted blindly in the middle of
+their work.
 
-The model knows when it has finished a unit of work, and a token count
-doesn't. So the plugin tells each model how full it is and lets it choose
-the moment.
+**sub-agent-compact** gives each party its own compaction policy, and lets
+the model decide *when* to compact.
 
-- **Nudges.** After a tool call, once a party's context passes its
-  `nudgeFrom` point, the model reads a line after the tool's result. The
-  line gives its size, the forced point, and how to compact itself. One more
-  line follows at each `nudgeEvery` step past the start. The
-  nudges start over after each compaction.
-- **Asking.** The main chat calls the `compact` tool
-  (`mcp__sub-agent-compact__compact`) with a `focus`: the plan or its file,
-  what is done, what is left, the next step. A sub-agent whose definition has
-  a `tools:` allowlist never sees a plugin's tool (checked on 2.1.283). So a
-  sub-agent can also write `<compact-now>its focus</compact-now>` in a
-  response that also calls a tool. A marker in a final answer, a marker
-  quoted in backticks, and a marker in the main chat's text don't count.
-  A sub-agent that sends the marker alone would end its run, because a
-  response without a tool call is its final answer. So the plugin refuses
-  that stop once (`classic.SubagentStop`), and the agent carries on and
-  compacts on its next request.
-- **Running.** The request arms the party. The next time Claude Code asks
-  to compact it, the plugin lets the compaction through with the focus as
-  the summarizer's instructions. Claude Code asks before each model request
-  once the party passes its ask point (see The window rule). A request made
-  below that point waits for it. For the main chat, it runs when the turn
-  ends instead.
-- **Haiku** is left alone: no nudges and no self-compaction. It compacts
-  at Claude Code's own point for its 200k window, 167k.
+- 🎯 **Per-agent auto-compact thresholds.** The main chat, each sub-agent
+  type and each built-in (`general-purpose`, `Explore`) gets its own point,
+  set in `settings.json` or in the agent's frontmatter.
+- 🧠 **Self-compaction at milestones.** As the context grows, the model is
+  nudged to finish the step in hand and compact itself. It picks the moment
+  and names what the summary must keep.
+- 🛟 **A forced point as the safety net.** A party whose model ignores the
+  nudges is still compacted when it reaches its ceiling.
+- 🪶 **Haiku is left alone.** Small, fast agents compact only at Claude
+  Code's own point.
+- 📜 **Every decision logged** to a JSONL file per session, when you want to
+  see why a compaction ran or was held.
 
-Percentages are of the model's own window. For the main chat that's
-`$.session.usage()`'s window. A sub-agent's window comes from its model id:
-Haiku 200k, a `[1m]` id and Sonnet 5 1M, and any other model gets the main
-chat's window.
+## 📊 Benchmark
 
-In a live run, one Sonnet 5 sub-agent read twelve 8k-token files, nudged
-from 15k. It compacted itself three times, each within a step of being
-asked, from about 65k down to 12k, and every answer it returned was
-correct.
+The job: one Sonnet 5 sub-agent renames an identifier across **24 Go files**,
+Edit only, about **500 model requests**, with the same brief in every run.
 
-On a larger job, one Sonnet 5 executor renamed an identifier in 24 Go files,
-Edit only, about 500 requests:
+| | No compaction | Fixed 100k threshold | **sub-agent-compact** |
+|---|---:|---:|---:|
+| **Cost** | $18.39 | $12.25 | **$12.20** |
+| Cost per request | $0.036 | $0.020 | $0.024 |
+| Mean context per request | 161k | 61k | 77k |
+| Executor time | 29 min | 81 min | 47 min |
+| Compactions | 0 | 6, forced mid-work | 4, each at a milestone the model chose |
+| Files re-read after compaction | none | 139 | 117 |
+| Files exactly right | 24/24 | 24/24 | 23/24 |
 
-| Run | Cost | Executor time | Compactions | Exact files |
-| --- | --- | --- | --- | --- |
-| No compaction | $18.39 | 29 min | 0 | 24/24 |
-| Blind 100k forced point | $12.25 | 81 min | 6 | 24/24 |
-| Self-compaction, these defaults | $12.20 | 47 min | 4, each at a milestone the model picked | 23/24 |
+**Where the saving comes from.** Every tool call re-sends the whole
+context, so a sub-agent that never compacts pays for its whole history again
+on each request. Self-compaction halved the mean context. That cut cache
+reads from $16.32 to $7.59, a saving of $8.73, of which compaction gave back
+$2.56 in re-caching, extra output and summaries.
 
-That run also found a bug, fixed since: a stale reading right after a
-compaction used up a nudge, so one stretch ran to 205k before the next.
+**Versus a fixed threshold.** It costs the same and finishes in 42% less
+time. It compacts less often, re-reads fewer files, and never cuts an agent
+off in the middle of an edit.
 
-## The window rule
+The run also exposed a bug, since fixed: a stale reading right after one
+compaction used up a nudge, and that stretch ran to 205k before the next one.
+The fixed version hasn't been re-measured, so no figure is claimed for it.
 
-The plugin can hold a compaction back, but it can't make Claude Code ask
-sooner. A plugin can start a compaction only for the main chat, between
-turns. Claude Code asks to compact a sub-agent only once that sub-agent
-nears `CLAUDE_CODE_AUTO_COMPACT_WINDOW`: about 33k below it, measured as
-about 65k with `100000` on 2.1.283. That is a launch environment variable,
-and a plugin can't set it. So:
-
-**Set `CLAUDE_CODE_AUTO_COMPACT_WINDOW` so Claude Code asks at or below your
-smallest sub-agent limit and nudge start.** `100000` asks from about 65k.
-The plugin then holds every party until its own point, or until its model
-asks. The request to let a plugin compact any loop from code is
-[anthropics/claude-code#91870](https://github.com/anthropics/claude-code/issues/91870#issuecomment-5848066352).
-
-The plugin logs a line once per agent type when that type's forced point is
-below Claude Code's ask point. If the window is unset, it logs a line once
-per party the first time it is asked to compact well past that party's
-forced point.
-
-## Install
-
-Function hooks must be enabled. You can export the variable in your shell,
-or set it in the `env` block of `settings.json`. Both work (tested on
-2.1.282).
+## 🚀 Quick start
 
 ```sh
+# 1. Turn on function hooks, and let Claude Code ask to compact from about 65k
 export CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1
-export CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000   # Claude Code asks from about 65k
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000
 
+# 2. Install
 claude plugin marketplace add rezzminator/sub-agent-compact
 claude plugin install sub-agent-compact@sub-agent-compact
 ```
 
-To develop locally: `claude --plugin-dir /path/to/sub-agent-compact`.
+Both variables also work in the `env` block of `settings.json`. That's all
+you need: with the defaults, the main chat is nudged from 20% of its window
+and sub-agents from 10%, every 10% after that, and each is forced at 60%.
 
-## Options
+> **Early access.** This plugin is built on Claude Code's function hooks,
+> an early-access surface that may change between releases. It is tested on
+> Claude Code 2.1.282 and 2.1.283.
+
+## 🧠 How it works
+
+```mermaid
+flowchart LR
+    A[Tool call] --> B{Context past<br/>a nudge point?}
+    B -- no --> A
+    B -- yes --> C[Model reads a nudge:<br/>size, forced point, how to compact]
+    C --> D[Model finishes the step<br/>and asks with a focus]
+    D --> E[Next request:<br/>compaction runs, the focus<br/>tells the summarizer what to keep]
+    E --> A
+    B -- past the forced point --> F[Compaction forced]
+    F --> A
+```
+
+1. **Nudges.** After a tool call, once a party's context passes its first
+   nudge point, the model reads one line after the tool's result: how full
+   it is, where it will be forced, and how to compact itself. Another line
+   follows at each step past the first. The nudges start over after every
+   compaction.
+2. **Asking.** The main chat calls the `compact` tool
+   (`mcp__sub-agent-compact__compact`) with a `focus`: the plan or its
+   file, what is done, what is left, the next step. A sub-agent whose
+   definition has a `tools:` allowlist can't see a plugin's tool, so it
+   writes `<compact-now>its focus</compact-now>` in a response that also
+   calls a tool.
+3. **Running.** The request arms the party. The next time Claude Code asks
+   to compact it, the plugin lets it through, and the focus becomes the
+   summarizer's instructions. A party that never asks is held until its
+   forced point, then compacted there.
+
+Guards keep this honest:
+- A marker quoted in backticks, one in a final answer, or one in the main
+  chat's text arms nothing.
+- A sub-agent that sends the marker alone would end its own run, because a
+  response without a tool call is its final answer. The plugin refuses that
+  stop once, and the agent carries on and compacts.
+- A lookup that fails is logged, and the compaction goes through. The
+  plugin never holds a compaction because of its own error.
+
+## ⚙️ Configuration
+
+### Central options
 
 Set these through `/config`, or under
 `pluginConfigs["sub-agent-compact@sub-agent-compact"].options` in
-`settings.json`. The key is the full plugin id, `{plugin}@{marketplace}`:
-Claude Code accepts a bare plugin name only for plugins from its official
-marketplace, and silently ignores options under any other key, so the plugin
-runs on its defaults. A size is
-a percentage of the model's window (`"30%"`), an integer, or a number with a
-k/m suffix (`"150k"`, `"0.6m"`). A bad value is logged by name and replaced
-by the default. It is never ignored silently.
+`settings.json`. The key must be the full plugin id: Claude Code silently
+ignores options under any other key.
+
+A **size** is a percentage of the model's own window (`"10%"`), an integer,
+or a number with a k/m suffix (`"150k"`, `"0.6m"`). A bad value is logged by
+name and replaced by the default, never ignored silently.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `mainAutoCompact` | `60%` | The main chat's forced point. |
-| `mainAutoCompactNudgeStart` | `20%` | Where the main chat is first nudged to compact itself. |
+| `mainAutoCompactNudgeStart` | `20%` | The main chat's first nudge. |
 | `mainAutoCompactNudgeEvery` | `10%` | The step between the main chat's nudges. |
-| `mainAutoCompactEnabled` | `true` | Off: the main chat is never nudged or compacted automatically. Its own request still runs. |
-| `subagentAutoCompact` | `60%` | The forced point of a sub-agent whose definition doesn't set its own. This covers built-ins such as `general-purpose` and `Explore`. |
+| `mainAutoCompactEnabled` | `true` | Off: the main chat is never nudged or compacted automatically; its own request still runs. |
+| `subagentAutoCompact` | `60%` | A sub-agent's forced point, unless its definition sets its own. It covers built-ins such as `general-purpose` and `Explore`. |
 | `subagentAutoCompactNudgeStart` | `10%` | A sub-agent's first nudge. |
 | `subagentAutoCompactNudgeEvery` | `10%` | The step between a sub-agent's nudges. |
-| `subagentAutoCompactEnabled` | `true` | Off: sub-agents are never nudged or compacted automatically. Their own requests still run. |
+| `subagentAutoCompactEnabled` | `true` | Off: sub-agents are never nudged or compacted automatically; their own requests still run. |
 | `agentDirs` | empty | Comma-separated extra directories of agent definitions. |
-| `logFile` | empty | Absolute path of the JSONL decision log. Each session writes its own file, with the session id before the extension: `decisions.jsonl` gives `decisions.{session-id}.jsonl`. A resumed session appends to its file. |
+| `logFile` | empty | Absolute path of the JSONL decision log. Each session writes its own file: `decisions.jsonl` becomes `decisions.{session-id}.jsonl`. |
 
 ```json
 {
-  "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1" },
+  "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "100000" },
   "pluginConfigs": {
     "sub-agent-compact@sub-agent-compact": {
-      "options": { "mainAutoCompact": "400k", "subagentAutoCompact": "60%", "subagentAutoCompactNudgeStart": "10%" }
+      "options": { "mainAutoCompact": "600k", "subagentAutoCompact": "60%", "subagentAutoCompactNudgeStart": "10%" }
     }
   }
 }
 ```
 
-## Per-agent policy
+### Per-agent policy (frontmatter)
 
-To give one agent its own policy, set any of these keys under `autoCompact`
-in its definition's frontmatter. Each overrides the `subagentAutoCompact*`
-option it matches, and a key left out keeps that option's value:
+Give one agent its own policy under `autoCompact` in its definition. Every
+key is optional, and a key left out takes the central `subagent*` value:
 
 ```markdown
 ---
@@ -203,42 +193,110 @@ autoCompact:
 You read files...
 ```
 
-A bare `autoCompact: 200k` is shorthand for `autoCompact.forceAt`.
-`enabled: false` suits an agent whose context must stay verbatim, because
-it is never nudged or compacted automatically. Its own request to compact
-still runs. Past its window it fails the way Claude Code does with
-auto-compact off.
+- A bare `autoCompact: 200k` is shorthand for `autoCompact.forceAt`.
+- `enabled: false` suits an agent whose context must stay verbatim. Past
+  its window it fails the way Claude Code does with auto-compact off.
+- **Where the plugin looks** for a sub-agent's definition, by its type:
+  `<cwd>/.claude/agents/<type>.md`, then `~/.claude/agents/<type>.md`, then
+  each `agentDirs` entry. After those, it takes any file whose frontmatter
+  `name:` matches.
 
-The plugin gets a sub-agent's type from `$.agent.list()` (for example
-`big-reader`). It then looks for the definition in this order:
+### Model windows
 
-1. `<cwd>/.claude/agents/<type>.md`
-2. `~/.claude/agents/<type>.md`
-3. each `agentDirs` entry
+Percentages are of each model's own window. The main chat's comes from
+Claude Code. A sub-agent's comes from its model id: Haiku 200k, Sonnet 5 and
+any `[1m]` model 1M, and any other model gets the main chat's window.
 
-If the filename differs from the type, it falls back to a file whose
-frontmatter `name:` matches. A type with no definition file gets the
-`subagent*` options. Results are cached per agent.
+### The window rule
 
-## Development
+A plugin can hold a compaction back, but it can't make Claude Code ask
+sooner. Claude Code asks to compact a party only once it nears
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW`: about 33k below that value, measured as
+about 65k for `100000`. So **set the window so Claude Code asks at or below
+your smallest nudge point.** `100000` suits the defaults. A request a model
+makes below that point waits until the party reaches it.
+
+Letting a plugin start a compaction for any sub-agent from code would remove
+this rule. It is requested upstream in
+[anthropics/claude-code#91870](https://github.com/anthropics/claude-code/issues/91870#issuecomment-5848066352).
+
+## ❓ FAQ
+
+<details>
+<summary><b>How do I set a different auto-compact threshold for sub-agents in Claude Code?</b></summary>
+
+Install this plugin and set `subagentAutoCompact` (for all sub-agents) or
+`autoCompact.forceAt` in one agent's frontmatter. Claude Code's own
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `autoCompactWindow` apply to the whole
+process, the main chat and every sub-agent alike
+([#90347](https://github.com/anthropics/claude-code/issues/90347)).
+</details>
+
+<details>
+<summary><b>Why do my sub-agents cost so much?</b></summary>
+
+Every tool call re-sends the whole context. A sub-agent that runs for a few
+hundred tool calls without compacting pays for its entire history on each
+one. In the benchmark above, that is the difference between $18.39 and
+$12.20.
+</details>
+
+<details>
+<summary><b>Can Claude compact itself when it decides to?</b></summary>
+
+Yes, that's the self-compaction feature. The main chat calls the `compact`
+tool. A sub-agent writes `<compact-now>focus</compact-now>` alongside its
+next tool call. In both cases the focus tells the summarizer what to keep.
+</details>
+
+<details>
+<summary><b>Can I keep the main chat large and the sub-agents small, or the other way round?</b></summary>
+
+Yes. The main chat's and the sub-agents' policies are independent, and each
+agent type can override the sub-agent policy in its frontmatter.
+</details>
+
+<details>
+<summary><b>Why doesn't the PreCompact hook work for this?</b></summary>
+
+The classic `PreCompact` hook fires for a sub-agent's compaction without the
+agent's id, so it can't tell which party is compacting
+([#91910](https://github.com/anthropics/claude-code/issues/91910)). Function
+hooks carry `agentId` on `session.compact`, which is what this plugin
+decides on.
+</details>
+
+<details>
+<summary><b>Does it work in headless mode (<code>claude -p</code>) and the Agent SDK?</b></summary>
+
+Sub-agent compaction and self-compaction do. Compacting the main chat
+between turns needs an interactive session: in `-p`, Claude Code 2.1.283
+rejects it, and the plugin logs that and carries on.
+</details>
+
+## 🛠️ Development
 
 ```sh
 npm install
 npm test              # unit tests for src/
 npm run typecheck
-claude plugin validate .claude-plugin/plugin.json
+claude plugin validate .
 ```
 
 `hooks/sub-agent-compact.ts` is a thin adapter over `src/`:
 
-- `limits.ts`: parses sizes and options into a policy per party.
-- `frontmatter.ts`: reads agent frontmatter.
-- `agents.ts`: resolves an agent type to its policy.
-- `window.ts`: model windows and Claude Code's ask point.
-- `nudge.ts`: nudge levels and text, the `<compact-now>` marker, the compact tool's reply.
-- `parties.ts`: per-party state: readings, the armed focus, nudges sent, a refused stop.
-- `decide.ts`: makes the decision.
+| Module | Role |
+| --- | --- |
+| `limits.ts` | Sizes and options, parsed into a policy per party |
+| `frontmatter.ts` | Agent frontmatter, one level of nesting |
+| `agents.ts` | Resolves an agent type to its policy |
+| `window.ts` | Model windows and Claude Code's ask point |
+| `nudge.ts` | Nudge levels and text, the `<compact-now>` marker, the compact tool's reply |
+| `parties.ts` | Per-party state: readings, the armed focus, nudges sent, a refused stop |
+| `decide.ts` | The decision for one compaction request |
 
 ## License
 
 MIT
+
+<sub>Keywords: Claude Code sub-agent compact · subagent auto-compact · smart compact · per-agent auto-compact threshold · autoCompactWindow per agent · CLAUDE_CODE_AUTO_COMPACT_WINDOW · context window management · context compaction · self-compaction · Claude Code plugin · function hooks · Claude Mods · multi-agent orchestration token cost</sub>

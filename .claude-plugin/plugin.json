@@ -1,7 +1,7 @@
 {
   "name": "sub-agent-compact",
   "version": "0.2.1",
-  "description": "Separate compaction for the main chat and each sub-agent: nudges as the context grows, self-compaction at a milestone the model picks, and a forced point per party.",
+  "description": "Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.",
   "license": "MIT",
   "author": {
     "name": "Reza",
@@ -69,5 +69,20 @@
       "description": "Absolute path of a JSONL file that records every compaction decision; empty for none.",
       "default": ""
     }
-  }
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "sub-agent",
+    "subagent",
+    "auto-compact",
+    "compaction",
+    "context-window",
+    "smart-compact",
+    "self-compaction",
+    "function-hooks",
+    "claude-mods",
+    "multi-agent",
+    "token-cost"
+  ]
 }
