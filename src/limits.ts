@@ -12,9 +12,9 @@ export type Policy = {
   nudgeEvery: Size;
 };
 
-/** Built-in defaults: the main chat nudged from 20% every 10%, forced at 60%; a sub-agent from 10% every 10%, forced at 30%. */
+/** Built-in defaults: the main chat nudged from 20% every 10%, forced at 60%; a sub-agent from 10% every 10%, forced at 60%. */
 export const DEFAULT_MAIN: Policy = { enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } };
-export const DEFAULT_SUBAGENT: Policy = { enabled: true, autoCompact: { percent: 30 }, nudgeStart: { percent: 10 }, nudgeEvery: { percent: 10 } };
+export const DEFAULT_SUBAGENT: Policy = { enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 10 }, nudgeEvery: { percent: 10 } };
 
 export type Parse<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -68,10 +68,11 @@ export function parseEnabled(raw: unknown): Parse<boolean> {
 /** The four keys of a policy, as the suffix after a party prefix (`mainAutoCompactNudgeStart`) or alone in frontmatter. */
 export const POLICY_KEYS = { autoCompact: 'AutoCompact', nudgeStart: 'AutoCompactNudgeStart', nudgeEvery: 'AutoCompactNudgeEvery', enabled: 'AutoCompactEnabled' } as const;
 
-/** The frontmatter spelling of a policy key: `autoCompactNudgeStart`. */
+/** The frontmatter spelling of a policy key, nested under `autoCompact`: `autoCompact.nudgeFrom`. */
+export const FRONTMATTER_KEYS = { autoCompact: 'autoCompact.forceAt', nudgeStart: 'autoCompact.nudgeFrom', nudgeEvery: 'autoCompact.nudgeEvery', enabled: 'autoCompact.enabled' } as const;
+
 export function frontmatterKey(field: keyof Policy): string {
-  const suffix = POLICY_KEYS[field];
-  return suffix.charAt(0).toLowerCase() + suffix.slice(1);
+  return FRONTMATTER_KEYS[field];
 }
 
 /**

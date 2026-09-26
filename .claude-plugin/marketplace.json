@@ -10,7 +10,7 @@
       "name": "sub-agent-compact",
       "source": "./",
       "description": "Separate auto-compact points for the main chat and for each sub-agent.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "license": "MIT"
     }
   ]

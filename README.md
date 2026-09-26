@@ -4,7 +4,7 @@ A Claude Code plugin that gives the main chat and each sub-agent their own
 compaction policy. As a party's context grows, its model is nudged to reach
 a milestone and compact itself, and it chooses the moment and what the
 summary keeps. Each party also has a forced point where it compacts whether
-it asked or not. A reader sub-agent can run to 300k tokens, a quick lookup
+it asked or not. A reader sub-agent can run to 600k tokens, a quick lookup
 agent can compact at 80k, and the main chat can hold out until 600k. Claude
 Code on its own gives them all the same point.
 
@@ -33,7 +33,7 @@ This plugin decides per party:
 - An automatic compaction (`auto` or `precompute`) passes once the party's
   model has asked to compact itself (see Self-compaction). The model's focus
   becomes what the summarizer is told.
-- A party with automatic compaction off (`autoCompactEnabled: false`) has
+- A party with automatic compaction off (`autoCompact.enabled: false`) has
   every other automatic compaction held.
 - Otherwise an automatic compaction is held while that party's context is
   below its forced point (`autoCompact`). It passes once the context reaches
@@ -66,9 +66,9 @@ doesn't. So the plugin tells each model how full it is and lets it choose
 the moment.
 
 - **Nudges.** After a tool call, once a party's context passes its
-  `autoCompactNudgeStart`, the model reads a line after the tool's result. The
+  `nudgeFrom` point, the model reads a line after the tool's result. The
   line gives its size, the forced point, and how to compact itself. One more
-  line follows at each `autoCompactNudgeEvery` step past the start. The
+  line follows at each `nudgeEvery` step past the start. The
   nudges start over after each compaction.
 - **Asking.** The main chat calls the `compact` tool
   (`mcp__sub-agent-compact__compact`) with a `focus`: the plan or its file,
@@ -166,7 +166,7 @@ by the default. It is never ignored silently.
 | `mainAutoCompactNudgeStart` | `20%` | Where the main chat is first nudged to compact itself. |
 | `mainAutoCompactNudgeEvery` | `10%` | The step between the main chat's nudges. |
 | `mainAutoCompactEnabled` | `true` | Off: the main chat is never nudged or compacted automatically. Its own request still runs. |
-| `subagentAutoCompact` | `30%` | The forced point of a sub-agent whose definition doesn't set its own. This covers built-ins such as `general-purpose` and `Explore`. |
+| `subagentAutoCompact` | `60%` | The forced point of a sub-agent whose definition doesn't set its own. This covers built-ins such as `general-purpose` and `Explore`. |
 | `subagentAutoCompactNudgeStart` | `10%` | A sub-agent's first nudge. |
 | `subagentAutoCompactNudgeEvery` | `10%` | The step between a sub-agent's nudges. |
 | `subagentAutoCompactEnabled` | `true` | Off: sub-agents are never nudged or compacted automatically. Their own requests still run. |
@@ -178,7 +178,7 @@ by the default. It is never ignored silently.
   "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1" },
   "pluginConfigs": {
     "sub-agent-compact@sub-agent-compact": {
-      "options": { "mainAutoCompact": "400k", "subagentAutoCompact": "30%", "subagentAutoCompactNudgeStart": "10%" }
+      "options": { "mainAutoCompact": "400k", "subagentAutoCompact": "60%", "subagentAutoCompactNudgeStart": "10%" }
     }
   }
 }
@@ -186,25 +186,28 @@ by the default. It is never ignored silently.
 
 ## Per-agent policy
 
-To give one agent its own policy, set any of these keys in its definition's
-frontmatter. Each overrides the `subagent*` option of the same name, and a
-key left out keeps that option's value:
+To give one agent its own policy, set any of these keys under `autoCompact`
+in its definition's frontmatter. Each overrides the `subagentAutoCompact*`
+option it matches, and a key left out keeps that option's value:
 
 ```markdown
 ---
 name: big-reader
 description: Reads large files in full.
-autoCompact: 200k
-autoCompactNudgeStart: 15%
-autoCompactNudgeEvery: 5%
-autoCompactEnabled: true
+autoCompact:
+  forceAt: 60%      # compacts here even if the model never asked
+  nudgeFrom: 10%    # first nudge to reach a milestone and compact itself
+  nudgeEvery: 10%   # one more nudge at each step past the first
+  enabled: true     # false: never nudged or compacted automatically
 ---
 You read files...
 ```
 
-`autoCompactEnabled: false` suits an agent whose context must stay verbatim,
-because it is never nudged or compacted automatically. Past its window it
-fails the way Claude Code does with auto-compact off.
+A bare `autoCompact: 200k` is shorthand for `autoCompact.forceAt`.
+`enabled: false` suits an agent whose context must stay verbatim, because
+it is never nudged or compacted automatically. Its own request to compact
+still runs. Past its window it fails the way Claude Code does with
+auto-compact off.
 
 The plugin gets a sub-agent's type from `$.agent.list()` (for example
 `big-reader`). It then looks for the definition in this order:

@@ -48,7 +48,7 @@ describe('resolveOptions', () => {
   it('defaults when nothing is set', () => {
     expect(resolveOptions({})).toEqual({ main: DEFAULT_MAIN, subagent: DEFAULT_SUBAGENT, agentDirs: [], errors: [] });
     expect(DEFAULT_MAIN).toEqual({ enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } });
-    expect(DEFAULT_SUBAGENT).toEqual({ enabled: true, autoCompact: { percent: 30 }, nudgeStart: { percent: 10 }, nudgeEvery: { percent: 10 } });
+    expect(DEFAULT_SUBAGENT).toEqual({ enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 10 }, nudgeEvery: { percent: 10 } });
   });
 
   it('reads every party key, suffixed values, dir lists and an absolute log file', () => {
@@ -97,6 +97,11 @@ describe('parseFrontmatter', () => {
   it('is empty without a leading or closing fence', () => {
     expect(parseFrontmatter('name: x\n')).toEqual({});
     expect(parseFrontmatter('---\nname: x\n')).toEqual({});
+  });
+
+  it('reads one level of nesting as parent.child', () => {
+    const text = '---\nname: x\nautoCompact:\n  enabled: false\n  forceAt: 60% # forced\n  nudgeFrom: "10%"\ntools: Read\n---\n';
+    expect(parseFrontmatter(text)).toEqual({ name: 'x', autoCompact: '', 'autoCompact.enabled': 'false', 'autoCompact.forceAt': '60%', 'autoCompact.nudgeFrom': '10%', tools: 'Read' });
   });
 
   it('handles CRLF and a BOM', () => {
@@ -200,8 +205,14 @@ describe('AgentPolicies', () => {
     expect(await policies.resolve('plain')).toEqual({ policy: DEFAULT_SUBAGENT, source: 'default' });
   });
 
+  it('reads autoCompact.forceAt, and a bare autoCompact value as its shorthand', async () => {
+    const fs = memoryFs({ '/d/nested.md': '---\nname: nested\nautoCompact:\n  forceAt: 40%\n---\n' });
+    const policies = new AgentPolicies(['/d'], DEFAULT_SUBAGENT, fs, () => {});
+    expect(await policies.resolve('nested')).toEqual({ policy: { ...DEFAULT_SUBAGENT, autoCompact: { percent: 40 } }, source: '/d/nested.md' });
+  });
+
   it('reads the nudge and enabled keys, each over the default field by field', async () => {
-    const fs = memoryFs({ '/d/quiet.md': '---\nname: quiet\nautoCompactEnabled: false\nautoCompactNudgeStart: 25%\nautoCompactNudgeEvery: 50k\n---\n' });
+    const fs = memoryFs({ '/d/quiet.md': '---\nname: quiet\nautoCompact:\n  enabled: false\n  nudgeFrom: 25%\n  nudgeEvery: 50k\n---\n' });
     const policies = new AgentPolicies(['/d'], DEFAULT_SUBAGENT, fs, () => {});
     expect(await policies.resolve('quiet')).toEqual({
       policy: { enabled: false, autoCompact: DEFAULT_SUBAGENT.autoCompact, nudgeStart: { percent: 25 }, nudgeEvery: { tokens: 50000 } },
@@ -212,7 +223,7 @@ describe('AgentPolicies', () => {
   it('logs a bad value or an unreadable file and falls back', async () => {
     const lines: string[] = [];
     const fs = memoryFs(
-      { '/d/bad.md': agent('bad', 'huge'), '/d/locked.md': agent('locked', '10k'), '/d/odd.md': '---\nname: odd\nautoCompactEnabled: sometimes\nautoCompactNudgeEvery: 20k\n---\n' },
+      { '/d/bad.md': agent('bad', 'huge'), '/d/locked.md': agent('locked', '10k'), '/d/odd.md': '---\nname: odd\nautoCompact:\n  enabled: sometimes\n  nudgeEvery: 20k\n---\n' },
       ['/d/locked.md'],
     );
     const policies = new AgentPolicies(['/d'], DEFAULT_SUBAGENT, fs, (line) => lines.push(line));
@@ -220,7 +231,7 @@ describe('AgentPolicies', () => {
     expect(await policies.resolve('locked')).toEqual({ policy: DEFAULT_SUBAGENT, source: 'default' });
     expect(await policies.resolve('odd')).toEqual({ policy: { ...DEFAULT_SUBAGENT, nudgeEvery: { tokens: 20000 } }, source: '/d/odd.md' });
     expect(lines.some((line) => /\/d\/bad\.md autoCompact for bad is invalid/.test(line))).toBe(true);
-    expect(lines.some((line) => /\/d\/odd\.md autoCompactEnabled for odd is invalid/.test(line))).toBe(true);
+    expect(lines.some((line) => /\/d\/odd\.md autoCompact\.enabled for odd is invalid/.test(line))).toBe(true);
     expect(lines.some((line) => /reading \/d\/locked\.md failed: Error: EACCES/.test(line))).toBe(true);
   });
 });

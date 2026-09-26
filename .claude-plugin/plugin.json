@@ -1,6 +1,6 @@
 {
   "name": "sub-agent-compact",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Separate compaction for the main chat and each sub-agent: nudges as the context grows, self-compaction at a milestone the model picks, and a forced point per party.",
   "license": "MIT",
   "author": {
@@ -37,7 +37,7 @@
       "type": "string",
       "title": "Sub-agent: forced compaction point",
       "description": "Where a sub-agent whose definition does not set it (frontmatter overrides it) is compacted even if its model never asked: a percentage of the model's window (\"30%\"), or tokens: an integer or a k/m suffix (\"300k\").",
-      "default": "30%"
+      "default": "60%"
     },
     "subagentAutoCompactNudgeStart": {
       "type": "string",

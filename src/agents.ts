@@ -22,8 +22,8 @@ function join(dir: string, name: string): string {
  * Resolves an agent type to its compaction policy: `<dir>/<type>.md` in each
  * directory in order, then any file whose frontmatter `name:` is the type
  * (the directories scanned once), else the default. The frontmatter keys
- * `autoCompact`, `autoCompactNudgeStart`, `autoCompactNudgeEvery` and
- * `autoCompactEnabled` each override the default's field. Every failure is
+ * under `autoCompact` (`forceAt`, `nudgeFrom`, `nudgeEvery`, `enabled`) each
+ * override the default's field. Every failure is
  * logged and falls back to the default; results are cached per type.
  */
 export class AgentPolicies {
@@ -69,11 +69,15 @@ export class AgentPolicies {
   }
 
   private fromFields(type: string, path: string, fields: Record<string, string>): AgentPolicy {
+    // The key as the author wrote it: the bare shorthand, or the nested one.
+    const written = (field: keyof Policy): string =>
+      field === 'autoCompact' && fields[frontmatterKey(field)] === undefined ? 'autoCompact' : frontmatterKey(field);
     const { policy, set } = readPolicy(
-      (field) => fields[frontmatterKey(field)],
+      // A bare `autoCompact: 200k` is shorthand for `autoCompact.forceAt`.
+      (field) => fields[frontmatterKey(field)] ?? (field === 'autoCompact' ? fields.autoCompact : undefined),
       this.fallback,
       (field, error, fallbackText) =>
-        this.log(`sub-agent-compact: ${path} ${frontmatterKey(field)} for ${type} is invalid (${error}); using the default ${fallbackText}`),
+        this.log(`sub-agent-compact: ${path} ${written(field)} for ${type} is invalid (${error}); using the default ${fallbackText}`),
     );
     return set ? { policy, source: path } : { policy: this.fallback, source: 'default' };
   }
