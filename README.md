@@ -5,7 +5,7 @@
 **Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.**
 
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
-[![Version](https://img.shields.io/badge/version-0.2.1-blue)](https://github.com/rezzminator/sub-agent-compact/commits/main)
+[![Version](https://img.shields.io/badge/version-0.2.2-blue)](https://github.com/rezzminator/sub-agent-compact/commits/main)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)](#development)
 
@@ -272,6 +272,15 @@ decides on.
 Sub-agent compaction and self-compaction do. Compacting the main chat
 between turns needs an interactive session: in `-p`, Claude Code 2.1.283
 rejects it, and the plugin logs that and carries on.
+</details>
+
+<details>
+<summary><b>What is the "not compacted · main 311k/600k" notice?</b></summary>
+
+It appears each time the plugin holds a compaction Claude Code asked for: the
+party, its context now, and where it will be compacted. Claude Code draws
+every held compaction as a notice, and plugins have no way to hold one
+silently yet, so the plugin keeps the line as short as it can.
 </details>
 
 ## 🛠️ Development

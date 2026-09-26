@@ -1,3 +1,7 @@
+function k(tokens: number): string {
+  return `${Math.round(tokens / 1000)}k`;
+}
+
 export type Trigger = 'manual' | 'auto' | 'plugin' | 'precompute';
 
 export type DecideInput = {
@@ -26,10 +30,11 @@ export type Decision =
 export function decide({ trigger, label, limit, tokens, enabled = true, armed }: DecideInput): Decision {
   if (trigger === 'manual' || trigger === 'plugin') return { action: 'pass', why: 'requested' };
   if (armed !== undefined) return { action: 'pass', why: 'self' };
-  if (!enabled) return { action: 'skip', reason: `sub-agent-compact: auto-compact is off for ${label}` };
+  if (!enabled) return { action: 'skip', reason: `${label}: auto-compact off` };
   if (tokens === undefined || !Number.isFinite(tokens)) return { action: 'pass', why: 'no-reading' };
   if (tokens >= limit) return { action: 'pass', why: 'at-limit' };
-  return { action: 'skip', reason: `sub-agent-compact: ${label} held below ${limit} (now ${tokens})` };
+  // Claude Code draws this reason as a notice on every hold ("not compacted · main 311k/600k"), so it stays short.
+  return { action: 'skip', reason: `${label} ${k(tokens)}/${k(limit)}` };
 }
 
 /** The context a response was answered over: uncached input plus cache reads and writes. */

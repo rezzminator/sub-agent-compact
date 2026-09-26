@@ -118,7 +118,7 @@ describe('decide', () => {
   it('holds auto and precompute below the limit, with the reason', () => {
     expect(decide({ trigger: 'auto', label: 'big-reader', limit: 130000, tokens: 101000 })).toEqual({
       action: 'skip',
-      reason: 'sub-agent-compact: big-reader held below 130000 (now 101000)',
+      reason: 'big-reader 101k/130k',
     });
     expect(decide({ trigger: 'precompute', label: 'main', limit: 10, tokens: 9 }).action).toBe('skip');
   });
@@ -135,7 +135,7 @@ describe('decide', () => {
   });
 
   it('holds every automatic compaction of a disabled party, even past its limit or without a reading', () => {
-    expect(decide({ trigger: 'auto', label: 'quiet', limit: 100, tokens: 500, enabled: false })).toEqual({ action: 'skip', reason: 'sub-agent-compact: auto-compact is off for quiet' });
+    expect(decide({ trigger: 'auto', label: 'quiet', limit: 100, tokens: 500, enabled: false })).toEqual({ action: 'skip', reason: 'quiet: auto-compact off' });
     expect(decide({ trigger: 'precompute', label: 'quiet', limit: 100, tokens: undefined, enabled: false }).action).toBe('skip');
     expect(decide({ trigger: 'manual', label: 'quiet', limit: 100, tokens: 1, enabled: false })).toEqual({ action: 'pass', why: 'requested' });
   });
