@@ -30,8 +30,13 @@
         "function-hooks",
         "claude-mods",
         "multi-agent",
-        "token-cost"
-      ]
+        "token-cost",
+        "professor"
+      ],
+      "author": {
+        "name": "Reza · Professor",
+        "url": "https://github.com/rezzminator/professor"
+      }
     }
   ]
 }
