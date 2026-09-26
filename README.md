@@ -5,9 +5,10 @@
 **Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.**
 
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
-[![Version](https://img.shields.io/badge/version-0.2.3-blue)](https://github.com/rezzminator/sub-agent-compact/commits/main)
+[![Version](https://img.shields.io/badge/version-0.2.4-blue)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)](#development)
+[![Built with Professor](https://img.shields.io/badge/built%20with-Professor-8A2BE2)](https://github.com/rezzminator/professor)
 
 **34% cheaper** than a sub-agent that never compacts · **52% less context** re-sent on every request
 
@@ -19,7 +20,7 @@ name: big-reader
 description: Reads large files in full.
 autoCompact:
   forceAt: 60%      # compacts here even if the model never asked
-  nudgeFrom: 10%    # first nudge to reach a milestone and compact itself
+  nudgeFrom: 20%    # first nudge to reach a milestone and compact itself
   nudgeEvery: 10%   # one more nudge at each step past the first
   enabled: true     # false: never nudged or compacted automatically
 ---
@@ -88,7 +89,7 @@ claude plugin install sub-agent-compact@sub-agent-compact
 
 Both variables also work in the `env` block of `settings.json`. That's all
 you need: with the defaults, the main chat is nudged from 20% of its window
-and sub-agents from 10%, every 10% after that, and each is forced at 60%.
+and sub-agents from 20%, every 10% after that, and each is forced at 60%.
 
 > **Early access.** This plugin is built on Claude Code's function hooks,
 > an early-access surface that may change between releases. It is tested on
@@ -153,7 +154,7 @@ name and replaced by the default, never ignored silently.
 | `mainAutoCompactNudgeEvery` | `10%` | The step between the main chat's nudges. |
 | `mainAutoCompactEnabled` | `true` | Off: the main chat is never nudged or compacted automatically; its own request still runs. |
 | `subagentAutoCompact` | `60%` | A sub-agent's forced point, unless its definition sets its own. It covers built-ins such as `general-purpose` and `Explore`. |
-| `subagentAutoCompactNudgeStart` | `10%` | A sub-agent's first nudge. |
+| `subagentAutoCompactNudgeStart` | `20%` | A sub-agent's first nudge. |
 | `subagentAutoCompactNudgeEvery` | `10%` | The step between a sub-agent's nudges. |
 | `subagentAutoCompactEnabled` | `true` | Off: sub-agents are never nudged or compacted automatically; their own requests still run. |
 | `agentDirs` | empty | Comma-separated extra directories of agent definitions. |
@@ -164,7 +165,7 @@ name and replaced by the default, never ignored silently.
   "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "100000" },
   "pluginConfigs": {
     "sub-agent-compact@sub-agent-compact": {
-      "options": { "mainAutoCompact": "600k", "subagentAutoCompact": "60%", "subagentAutoCompactNudgeStart": "10%" }
+      "options": { "mainAutoCompact": "600k", "subagentAutoCompact": "60%", "subagentAutoCompactNudgeStart": "20%" }
     }
   }
 }
@@ -181,7 +182,7 @@ name: big-reader
 description: Reads large files in full.
 autoCompact:
   forceAt: 60%      # compacts here even if the model never asked
-  nudgeFrom: 10%    # first nudge to reach a milestone and compact itself
+  nudgeFrom: 20%    # first nudge to reach a milestone and compact itself
   nudgeEvery: 10%   # one more nudge at each step past the first
   enabled: true     # false: never nudged or compacted automatically
 ---
@@ -287,6 +288,8 @@ npm run typecheck
 npm run validate:plugin
 ```
 
+Work lands on `develop`; `main` holds only releases, and each one is tagged `sub-agent-compact--vX.Y.Z` with its notes in [CHANGELOG.md](./CHANGELOG.md). Pull requests go to `develop`.
+
 `plugins/sub-agent-compact/hooks/sub-agent-compact.ts` is a thin adapter over `plugins/sub-agent-compact/src/`:
 
 | Module | Role |
@@ -298,6 +301,10 @@ npm run validate:plugin
 | `nudge.ts` | Nudge levels and text, the `<compact-now>` marker, the compact tool's reply |
 | `parties.ts` | Per-party state: readings, the armed focus, nudges sent, a refused stop |
 | `decide.ts` | The decision for one compaction request |
+
+## 🎓 Built with Professor
+
+sub-agent-compact is built and maintained with [Professor](https://github.com/rezzminator/professor), a fleet controller and discipline layer for Claude Code, Codex and OpenCode: chats that message each other, agents held to the project's rules, and gated releases. This plugin came out of it: Professor runs long orchestrations of sub-agents, and their context bills are why per-agent compaction exists.
 
 ## License
 

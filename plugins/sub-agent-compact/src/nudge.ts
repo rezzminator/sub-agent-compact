@@ -66,7 +66,8 @@ export function nudgeText({ tokens, window, level, autoCompact, main, toolName }
     : `call ${toolName} with a focus if you have that tool; otherwise write <compact-now>your focus</compact-now> in a response that also makes your next tool call, never alone, because a response without a tool call ends your run`;
   return [
     `sub-agent-compact: your context is ${k(tokens)} tokens (${Math.round((tokens / window) * 100)}% of your ${k(window)} window).`,
-    level > 0 ? `Nudge ${level + 1}: compact at your very next milestone.` : 'Wrap up the step in hand and get ready to compact.',
+    'If you are on your last job (one task or your final answer left), finish it first and do not compact.',
+    level > 0 ? `Nudge ${level + 1}: with more work still ahead, compact at your very next milestone.` : 'With more work still ahead, wrap up the step in hand and get ready to compact.',
     'At a clean milestone, write anything you must not lose to a file, then compact yourself:',
     `${how}.`,
     'The summary keeps what the focus names, so name the plan or its file, what is done, what is left and the next step.',

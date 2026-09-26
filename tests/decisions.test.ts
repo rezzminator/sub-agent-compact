@@ -48,7 +48,7 @@ describe('resolveOptions', () => {
   it('defaults when nothing is set', () => {
     expect(resolveOptions({})).toEqual({ main: DEFAULT_MAIN, subagent: DEFAULT_SUBAGENT, agentDirs: [], errors: [] });
     expect(DEFAULT_MAIN).toEqual({ enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } });
-    expect(DEFAULT_SUBAGENT).toEqual({ enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 10 }, nudgeEvery: { percent: 10 } });
+    expect(DEFAULT_SUBAGENT).toEqual({ enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } });
   });
 
   it('reads every party key, suffixed values, dir lists and an absolute log file', () => {

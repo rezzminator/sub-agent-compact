@@ -8,9 +8,14 @@
   "plugins": [
     {
       "name": "sub-agent-compact",
-      "source": "./plugins/sub-agent-compact",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/rezzminator/sub-agent-compact.git",
+        "path": "plugins/sub-agent-compact",
+        "ref": "main"
+      },
       "description": "Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "license": "MIT",
       "keywords": [
         "claude-code",
@@ -25,8 +30,13 @@
         "function-hooks",
         "claude-mods",
         "multi-agent",
-        "token-cost"
-      ]
+        "token-cost",
+        "professor"
+      ],
+      "author": {
+        "name": "Reza · Professor",
+        "url": "https://github.com/rezzminator/professor"
+      }
     }
   ]
 }

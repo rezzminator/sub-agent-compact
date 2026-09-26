@@ -99,6 +99,17 @@ describe('nudgeText', () => {
     expect(text).not.toContain('<compact-now>');
   });
 
+  it('tells a party on its last job to finish it instead of compacting, at every level', () => {
+    for (const level of [0, 1, 3]) {
+      for (const main of [true, false]) {
+        const text = nudgeText({ ...base, level, main });
+        expect(text).toMatch(/last job/);
+        expect(text).toMatch(/finish it first and do not compact/);
+        expect(text.indexOf('last job')).toBeLessThan(text.indexOf('compact yourself'));
+      }
+    }
+  });
+
   it('gives a sub-agent the marker beside the tool, and escalates past the first nudge', () => {
     const text = nudgeText({ ...base, level: 1, main: false });
     expect(text).toContain('<compact-now>');

@@ -1,6 +1,6 @@
 {
   "name": "sub-agent-compact",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.",
   "type": "module",
@@ -11,7 +11,8 @@
   "scripts": {
     "test": "vitest run --dir tests",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.hooks.json",
-    "validate:plugin": "claude plugin validate . && claude plugin validate plugins/sub-agent-compact"
+    "validate:plugin": "claude plugin validate --strict . && claude plugin validate --strict plugins/sub-agent-compact",
+    "release:check": "scripts/release-check.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
