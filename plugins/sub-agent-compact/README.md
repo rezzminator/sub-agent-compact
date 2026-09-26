@@ -7,7 +7,7 @@ Configure it per agent in frontmatter:
 ```yaml
 autoCompact:
   forceAt: 60%      # compaction is forced here
-  nudgeFrom: 10%    # the first nudge to wrap up and compact
+  nudgeFrom: 20%    # the first nudge to wrap up and compact
   nudgeEvery: 10%   # a nudge every 10% after that
   enabled: true
 ```

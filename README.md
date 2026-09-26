@@ -20,7 +20,7 @@ name: big-reader
 description: Reads large files in full.
 autoCompact:
   forceAt: 60%      # compacts here even if the model never asked
-  nudgeFrom: 10%    # first nudge to reach a milestone and compact itself
+  nudgeFrom: 20%    # first nudge to reach a milestone and compact itself
   nudgeEvery: 10%   # one more nudge at each step past the first
   enabled: true     # false: never nudged or compacted automatically
 ---
@@ -89,7 +89,7 @@ claude plugin install sub-agent-compact@sub-agent-compact
 
 Both variables also work in the `env` block of `settings.json`. That's all
 you need: with the defaults, the main chat is nudged from 20% of its window
-and sub-agents from 10%, every 10% after that, and each is forced at 60%.
+and sub-agents from 20%, every 10% after that, and each is forced at 60%.
 
 > **Early access.** This plugin is built on Claude Code's function hooks,
 > an early-access surface that may change between releases. It is tested on
@@ -154,7 +154,7 @@ name and replaced by the default, never ignored silently.
 | `mainAutoCompactNudgeEvery` | `10%` | The step between the main chat's nudges. |
 | `mainAutoCompactEnabled` | `true` | Off: the main chat is never nudged or compacted automatically; its own request still runs. |
 | `subagentAutoCompact` | `60%` | A sub-agent's forced point, unless its definition sets its own. It covers built-ins such as `general-purpose` and `Explore`. |
-| `subagentAutoCompactNudgeStart` | `10%` | A sub-agent's first nudge. |
+| `subagentAutoCompactNudgeStart` | `20%` | A sub-agent's first nudge. |
 | `subagentAutoCompactNudgeEvery` | `10%` | The step between a sub-agent's nudges. |
 | `subagentAutoCompactEnabled` | `true` | Off: sub-agents are never nudged or compacted automatically; their own requests still run. |
 | `agentDirs` | empty | Comma-separated extra directories of agent definitions. |
@@ -165,7 +165,7 @@ name and replaced by the default, never ignored silently.
   "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "100000" },
   "pluginConfigs": {
     "sub-agent-compact@sub-agent-compact": {
-      "options": { "mainAutoCompact": "600k", "subagentAutoCompact": "60%", "subagentAutoCompactNudgeStart": "10%" }
+      "options": { "mainAutoCompact": "600k", "subagentAutoCompact": "60%", "subagentAutoCompactNudgeStart": "20%" }
     }
   }
 }
@@ -182,7 +182,7 @@ name: big-reader
 description: Reads large files in full.
 autoCompact:
   forceAt: 60%      # compacts here even if the model never asked
-  nudgeFrom: 10%    # first nudge to reach a milestone and compact itself
+  nudgeFrom: 20%    # first nudge to reach a milestone and compact itself
   nudgeEvery: 10%   # one more nudge at each step past the first
   enabled: true     # false: never nudged or compacted automatically
 ---

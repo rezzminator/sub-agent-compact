@@ -12,9 +12,9 @@ export type Policy = {
   nudgeEvery: Size;
 };
 
-/** Built-in defaults: the main chat nudged from 20% every 10%, forced at 60%; a sub-agent from 10% every 10%, forced at 60%. */
+/** Built-in defaults: the main chat nudged from 20% every 10%, forced at 60%; a sub-agent from 20% every 10%, forced at 60%. */
 export const DEFAULT_MAIN: Policy = { enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } };
-export const DEFAULT_SUBAGENT: Policy = { enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 10 }, nudgeEvery: { percent: 10 } };
+export const DEFAULT_SUBAGENT: Policy = { enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } };
 
 export type Parse<T> = { ok: true; value: T } | { ok: false; error: string };
 

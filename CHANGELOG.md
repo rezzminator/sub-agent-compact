@@ -5,6 +5,8 @@ Every release of sub-agent-compact. Versions follow [semantic versioning](https:
 ## [Unreleased]
 
 ### Changed
+- A sub-agent is first nudged at 20% of its window, up from 10% (`subagentAutoCompactNudgeStart`).
+- Every nudge tells a party on its last job (one task or its final answer left) to finish it first and not compact.
 - The plugin names Professor as its maker: the manifest's author and keywords, and the READMEs.
 - The marketplace installs the plugin from `main` (a `git-subdir` source), so an install only ever gets a released version while work lands on `develop`.
 

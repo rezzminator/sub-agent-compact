@@ -60,7 +60,7 @@
       "type": "string",
       "title": "Sub-agent: first nudge",
       "description": "Where a sub-agent whose definition does not set it (frontmatter overrides it) is first told to reach a milestone and compact itself: a percentage of the model's window (\"30%\"), or tokens: an integer or a k/m suffix (\"300k\").",
-      "default": "10%"
+      "default": "20%"
     },
     "subagentAutoCompactNudgeEvery": {
       "type": "string",
