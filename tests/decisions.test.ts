@@ -1,54 +1,90 @@
 import { describe, expect, it } from 'vitest';
-import { AgentLimits, type AgentFs } from '../src/agents.ts';
+import { AgentPolicies, type AgentFs } from '../src/agents.ts';
 import { contextTokens, currentTokens, decide, estimateTranscript } from '../src/decide.ts';
 import { parseFrontmatter } from '../src/frontmatter.ts';
-import { DEFAULT_MAIN_AUTO_COMPACT, DEFAULT_SUBAGENT_AUTO_COMPACT, parseLimit, resolveOptions } from '../src/limits.ts';
+import { DEFAULT_MAIN, DEFAULT_SUBAGENT, parseEnabled, parseSize, resolveOptions, sizeTokens } from '../src/limits.ts';
 
-describe('parseLimit', () => {
+describe('parseSize', () => {
   it.each([
-    [150000, 150000],
-    ['150000', 150000],
-    ['150k', 150000],
-    ['150K', 150000],
-    ['0.6m', 600000],
-    ['1.5M', 1500000],
-    [' 200k ', 200000],
-    ['200_000', 200000],
-  ])('%j → %d', (raw, value) => {
-    expect(parseLimit(raw)).toEqual({ ok: true, value });
+    [150000, { tokens: 150000 }],
+    ['150000', { tokens: 150000 }],
+    ['150k', { tokens: 150000 }],
+    ['150K', { tokens: 150000 }],
+    ['0.6m', { tokens: 600000 }],
+    ['1.5M', { tokens: 1500000 }],
+    [' 200k ', { tokens: 200000 }],
+    ['200_000', { tokens: 200000 }],
+    ['10%', { percent: 10 }],
+    ['12.5 %', { percent: 12.5 }],
+    ['100%', { percent: 100 }],
+  ])('%j → %j', (raw, value) => {
+    expect(parseSize(raw)).toEqual({ ok: true, value });
   });
 
-  it.each([['abc'], ['150kb'], ['-5'], ['0'], [''], [0], [-1], [Number.NaN], [true], [null]])('%j is an error', (raw) => {
-    const parsed = parseLimit(raw);
-    expect(parsed.ok).toBe(false);
+  it.each([['abc'], ['150kb'], ['-5'], ['0'], [''], [0], [-1], [Number.NaN], [true], [null], ['0%'], ['101%'], ['%']])('%j is an error', (raw) => {
+    expect(parseSize(raw).ok).toBe(false);
+  });
+});
+
+describe('sizeTokens', () => {
+  it('keeps tokens and takes a percentage of the window', () => {
+    expect(sizeTokens({ tokens: 90000 }, 1_000_000)).toBe(90000);
+    expect(sizeTokens({ percent: 10 }, 1_000_000)).toBe(100000);
+    expect(sizeTokens({ percent: 12.5 }, 200_000)).toBe(25000);
+  });
+});
+
+describe('parseEnabled', () => {
+  it.each([[true, true], [false, false], ['true', true], ['FALSE', false], ['on', true], ['off', false], ['yes', true], ['no', false]])('%j → %j', (raw, value) => {
+    expect(parseEnabled(raw)).toEqual({ ok: true, value });
+  });
+
+  it.each([['maybe'], [1], [null], ['']])('%j is an error', (raw) => {
+    expect(parseEnabled(raw).ok).toBe(false);
   });
 });
 
 describe('resolveOptions', () => {
   it('defaults when nothing is set', () => {
-    expect(resolveOptions({})).toEqual({
-      mainAutoCompact: DEFAULT_MAIN_AUTO_COMPACT,
-      subagentAutoCompact: DEFAULT_SUBAGENT_AUTO_COMPACT,
-      agentDirs: [],
-      errors: [],
-    });
+    expect(resolveOptions({})).toEqual({ main: DEFAULT_MAIN, subagent: DEFAULT_SUBAGENT, agentDirs: [], errors: [] });
+    expect(DEFAULT_MAIN).toEqual({ enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } });
+    expect(DEFAULT_SUBAGENT).toEqual({ enabled: true, autoCompact: { percent: 30 }, nudgeStart: { percent: 10 }, nudgeEvery: { percent: 10 } });
   });
 
-  it('reads suffixed values, dir lists and an absolute log file', () => {
-    const options = resolveOptions({ mainAutoCompact: '0.6m', subagentAutoCompact: '90k', agentDirs: 'a, /b/c ,', logFile: '/tmp/x.jsonl' });
-    expect(options).toEqual({ mainAutoCompact: 600000, subagentAutoCompact: 90000, agentDirs: ['a', '/b/c'], logFile: '/tmp/x.jsonl', errors: [] });
+  it('reads every party key, suffixed values, dir lists and an absolute log file', () => {
+    const options = resolveOptions({
+      mainAutoCompact: '0.6m',
+      mainAutoCompactNudgeStart: '25%',
+      mainAutoCompactNudgeEvery: '50k',
+      mainAutoCompactEnabled: 'off',
+      subagentAutoCompact: '90k',
+      subagentAutoCompactNudgeStart: '40k',
+      subagentAutoCompactNudgeEvery: '5%',
+      subagentAutoCompactEnabled: true,
+      agentDirs: 'a, /b/c ,',
+      logFile: '/tmp/x.jsonl',
+    });
+    expect(options).toEqual({
+      main: { enabled: false, autoCompact: { tokens: 600000 }, nudgeStart: { percent: 25 }, nudgeEvery: { tokens: 50000 } },
+      subagent: { enabled: true, autoCompact: { tokens: 90000 }, nudgeStart: { tokens: 40000 }, nudgeEvery: { percent: 5 } },
+      agentDirs: ['a', '/b/c'],
+      logFile: '/tmp/x.jsonl',
+      errors: [],
+    });
     expect(resolveOptions({ agentDirs: ['/x', ' /y '] }).agentDirs).toEqual(['/x', '/y']);
   });
 
   it('falls back on a bad value and names it, never silently', () => {
-    const options = resolveOptions({ mainAutoCompact: 'lots', subagentAutoCompact: '-3', logFile: 'relative.jsonl' });
-    expect(options.mainAutoCompact).toBe(DEFAULT_MAIN_AUTO_COMPACT);
-    expect(options.subagentAutoCompact).toBe(DEFAULT_SUBAGENT_AUTO_COMPACT);
+    const options = resolveOptions({ mainAutoCompact: 'lots', subagentAutoCompact: '-3', subagentAutoCompactEnabled: 'maybe', logFile: 'relative.jsonl' });
+    expect(options.main.autoCompact).toEqual(DEFAULT_MAIN.autoCompact);
+    expect(options.subagent.autoCompact).toEqual(DEFAULT_SUBAGENT.autoCompact);
+    expect(options.subagent.enabled).toBe(true);
     expect(options.logFile).toBeUndefined();
-    expect(options.errors).toHaveLength(3);
-    expect(options.errors[0]).toMatch(/mainAutoCompact is invalid.*"lots".*600000/);
+    expect(options.errors).toHaveLength(4);
+    expect(options.errors[0]).toMatch(/mainAutoCompact is invalid.*"lots".*60%/);
     expect(options.errors[1]).toMatch(/subagentAutoCompact is invalid/);
-    expect(options.errors[2]).toMatch(/logFile must be an absolute path/);
+    expect(options.errors[2]).toMatch(/subagentAutoCompactEnabled is invalid.*"maybe".*true/);
+    expect(options.errors[3]).toMatch(/logFile must be an absolute path/);
   });
 });
 
@@ -87,6 +123,18 @@ describe('decide', () => {
     expect(decide({ trigger: 'precompute', label: 'main', limit: 150000, tokens: 200000 }).action).toBe('pass');
   });
 
+  it('passes an armed self-compaction below the limit, before any other rule', () => {
+    expect(decide({ trigger: 'auto', label: 'big-reader', limit: 130000, tokens: 70000, armed: 'the plan in plan.md' })).toEqual({ action: 'pass', why: 'self' });
+    expect(decide({ trigger: 'precompute', label: 'main', limit: 130000, tokens: 70000, armed: 'x' })).toEqual({ action: 'pass', why: 'self' });
+    expect(decide({ trigger: 'auto', label: 'quiet', limit: 130000, tokens: 70000, enabled: false, armed: 'x' })).toEqual({ action: 'pass', why: 'self' });
+  });
+
+  it('holds every automatic compaction of a disabled party, even past its limit or without a reading', () => {
+    expect(decide({ trigger: 'auto', label: 'quiet', limit: 100, tokens: 500, enabled: false })).toEqual({ action: 'skip', reason: 'sub-agent-compact: auto-compact is off for quiet' });
+    expect(decide({ trigger: 'precompute', label: 'quiet', limit: 100, tokens: undefined, enabled: false }).action).toBe('skip');
+    expect(decide({ trigger: 'manual', label: 'quiet', limit: 100, tokens: 1, enabled: false })).toEqual({ action: 'pass', why: 'requested' });
+  });
+
   it('never holds without a reading', () => {
     expect(decide({ trigger: 'auto', label: 'x', limit: 100, tokens: undefined })).toEqual({ action: 'pass', why: 'no-reading' });
     expect(decide({ trigger: 'auto', label: 'x', limit: 100, tokens: Number.NaN })).toEqual({ action: 'pass', why: 'no-reading' });
@@ -120,44 +168,59 @@ function memoryFs(files: Record<string, string>, failing: string[] = []): AgentF
   };
 }
 
-describe('AgentLimits', () => {
+describe('AgentPolicies', () => {
   const agent = (name: string, autoCompact?: string) => `---\nname: ${name}\n${autoCompact ? `autoCompact: ${autoCompact}\n` : ''}---\nbody\n`;
+  const withCeiling = (tokens: number) => ({ ...DEFAULT_SUBAGENT, autoCompact: { tokens } });
 
   it('finds <type>.md in directory order, project first', async () => {
     const fs = memoryFs({ '/p/.claude/agents/big-reader.md': agent('big-reader', '130k'), '/h/.claude/agents/big-reader.md': agent('big-reader', '50k') });
-    const limits = new AgentLimits(['/p/.claude/agents', '/h/.claude/agents'], 150000, fs, () => {});
-    expect(await limits.resolve('big-reader')).toEqual({ limit: 130000, source: '/p/.claude/agents/big-reader.md' });
+    const policies = new AgentPolicies(['/p/.claude/agents', '/h/.claude/agents'], DEFAULT_SUBAGENT, fs, () => {});
+    expect(await policies.resolve('big-reader')).toEqual({ policy: withCeiling(130000), source: '/p/.claude/agents/big-reader.md' });
   });
 
   it('matches by frontmatter name when the filename differs, and caches', async () => {
     const fs = memoryFs({ '/extra/reader-v2.md': agent('big-reader', '0.2m'), '/extra/other.md': agent('other') });
-    const limits = new AgentLimits(['/p/.claude/agents', '/extra'], 150000, fs, () => {});
-    expect(await limits.resolve('big-reader')).toEqual({ limit: 200000, source: '/extra/reader-v2.md' });
+    const policies = new AgentPolicies(['/p/.claude/agents', '/extra'], DEFAULT_SUBAGENT, fs, () => {});
+    expect(await policies.resolve('big-reader')).toEqual({ policy: withCeiling(200000), source: '/extra/reader-v2.md' });
     const readsAfterFirst = fs.reads.length;
-    await limits.resolve('big-reader');
+    await policies.resolve('big-reader');
     expect(fs.reads.length).toBe(readsAfterFirst);
   });
 
   it('skips a <type>.md whose name: names another agent', async () => {
     const fs = memoryFs({ '/d/reader.md': agent('writer', '10k'), '/d/x.md': agent('reader', '20k') });
-    const limits = new AgentLimits(['/d'], 150000, fs, () => {});
-    expect(await limits.resolve('reader')).toEqual({ limit: 20000, source: '/d/x.md' });
+    const policies = new AgentPolicies(['/d'], DEFAULT_SUBAGENT, fs, () => {});
+    expect(await policies.resolve('reader')).toEqual({ policy: withCeiling(20000), source: '/d/x.md' });
   });
 
-  it('gives built-ins and definitions without autoCompact the default', async () => {
+  it('gives built-ins and definitions without a compaction key the default', async () => {
     const fs = memoryFs({ '/d/plain.md': agent('plain') });
-    const limits = new AgentLimits(['/d'], 150000, fs, () => {});
-    expect(await limits.resolve('general-purpose')).toEqual({ limit: 150000, source: 'default' });
-    expect(await limits.resolve('plain')).toEqual({ limit: 150000, source: 'default' });
+    const policies = new AgentPolicies(['/d'], DEFAULT_SUBAGENT, fs, () => {});
+    expect(await policies.resolve('general-purpose')).toEqual({ policy: DEFAULT_SUBAGENT, source: 'default' });
+    expect(await policies.resolve('plain')).toEqual({ policy: DEFAULT_SUBAGENT, source: 'default' });
   });
 
-  it('logs a bad autoCompact or an unreadable file and falls back', async () => {
+  it('reads the nudge and enabled keys, each over the default field by field', async () => {
+    const fs = memoryFs({ '/d/quiet.md': '---\nname: quiet\nautoCompactEnabled: false\nautoCompactNudgeStart: 25%\nautoCompactNudgeEvery: 50k\n---\n' });
+    const policies = new AgentPolicies(['/d'], DEFAULT_SUBAGENT, fs, () => {});
+    expect(await policies.resolve('quiet')).toEqual({
+      policy: { enabled: false, autoCompact: DEFAULT_SUBAGENT.autoCompact, nudgeStart: { percent: 25 }, nudgeEvery: { tokens: 50000 } },
+      source: '/d/quiet.md',
+    });
+  });
+
+  it('logs a bad value or an unreadable file and falls back', async () => {
     const lines: string[] = [];
-    const fs = memoryFs({ '/d/bad.md': agent('bad', 'huge'), '/d/locked.md': agent('locked', '10k') }, ['/d/locked.md']);
-    const limits = new AgentLimits(['/d'], 150000, fs, (line) => lines.push(line));
-    expect(await limits.resolve('bad')).toEqual({ limit: 150000, source: 'default' });
-    expect(await limits.resolve('locked')).toEqual({ limit: 150000, source: 'default' });
+    const fs = memoryFs(
+      { '/d/bad.md': agent('bad', 'huge'), '/d/locked.md': agent('locked', '10k'), '/d/odd.md': '---\nname: odd\nautoCompactEnabled: sometimes\nautoCompactNudgeEvery: 20k\n---\n' },
+      ['/d/locked.md'],
+    );
+    const policies = new AgentPolicies(['/d'], DEFAULT_SUBAGENT, fs, (line) => lines.push(line));
+    expect(await policies.resolve('bad')).toEqual({ policy: DEFAULT_SUBAGENT, source: 'default' });
+    expect(await policies.resolve('locked')).toEqual({ policy: DEFAULT_SUBAGENT, source: 'default' });
+    expect(await policies.resolve('odd')).toEqual({ policy: { ...DEFAULT_SUBAGENT, nudgeEvery: { tokens: 20000 } }, source: '/d/odd.md' });
     expect(lines.some((line) => /\/d\/bad\.md autoCompact for bad is invalid/.test(line))).toBe(true);
+    expect(lines.some((line) => /\/d\/odd\.md autoCompactEnabled for odd is invalid/.test(line))).toBe(true);
     expect(lines.some((line) => /reading \/d\/locked\.md failed: Error: EACCES/.test(line))).toBe(true);
   });
 });

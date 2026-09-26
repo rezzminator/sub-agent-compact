@@ -7,18 +7,26 @@ export type DecideInput = {
   limit: number;
   /** The party's current context tokens; undefined when no reading could be taken. */
   tokens: number | undefined;
+  /** False when automatic compaction is off for this party; default true. */
+  enabled?: boolean;
+  /** The focus the party's model gave when it asked to compact itself; absent when it has not asked. */
+  armed?: string;
 };
 
 export type Decision =
-  | { action: 'pass'; why: 'requested' | 'at-limit' | 'no-reading' }
+  | { action: 'pass'; why: 'requested' | 'self' | 'at-limit' | 'no-reading' }
   | { action: 'skip'; reason: string };
 
 /**
- * One compaction request: a person's or plugin's always passes; an automatic
- * one is held while the party is below its limit. No reading never holds.
+ * One compaction request: a person's or plugin's always passes, and so does an
+ * automatic one once the party's model asked to compact itself. Otherwise an
+ * automatic one is held for a party with automatic compaction off, and while
+ * the party is below its limit. No reading never holds an enabled party.
  */
-export function decide({ trigger, label, limit, tokens }: DecideInput): Decision {
+export function decide({ trigger, label, limit, tokens, enabled = true, armed }: DecideInput): Decision {
   if (trigger === 'manual' || trigger === 'plugin') return { action: 'pass', why: 'requested' };
+  if (armed !== undefined) return { action: 'pass', why: 'self' };
+  if (!enabled) return { action: 'skip', reason: `sub-agent-compact: auto-compact is off for ${label}` };
   if (tokens === undefined || !Number.isFinite(tokens)) return { action: 'pass', why: 'no-reading' };
   if (tokens >= limit) return { action: 'pass', why: 'at-limit' };
   return { action: 'skip', reason: `sub-agent-compact: ${label} held below ${limit} (now ${tokens})` };

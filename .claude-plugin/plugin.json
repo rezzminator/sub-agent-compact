@@ -1,22 +1,61 @@
 {
   "name": "sub-agent-compact",
-  "version": "0.1.1",
-  "description": "Separate auto-compact points for the main chat and for each sub-agent, keyed on the agent identity Claude Code's function hooks carry.",
+  "version": "0.2.0",
+  "description": "Separate compaction for the main chat and each sub-agent: nudges as the context grows, self-compaction at a milestone the model picks, and a forced point per party.",
   "license": "MIT",
-  "author": { "name": "Reza", "url": "https://github.com/rezzminator" },
+  "author": {
+    "name": "Reza",
+    "url": "https://github.com/rezzminator"
+  },
   "repository": "https://github.com/rezzminator/sub-agent-compact",
   "userConfig": {
     "mainAutoCompact": {
       "type": "string",
-      "title": "Main chat auto-compact point",
-      "description": "Context tokens at which the main chat compacts: an integer or a k/m suffix (\"600k\", \"0.6m\").",
-      "default": "600000"
+      "title": "Main chat: forced compaction point",
+      "description": "Where the main chat is compacted even if its model never asked: a percentage of the model's window (\"30%\"), or tokens: an integer or a k/m suffix (\"300k\").",
+      "default": "60%"
+    },
+    "mainAutoCompactNudgeStart": {
+      "type": "string",
+      "title": "Main chat: first nudge",
+      "description": "Where the main chat is first told to reach a milestone and compact itself: a percentage of the model's window (\"30%\"), or tokens: an integer or a k/m suffix (\"300k\").",
+      "default": "20%"
+    },
+    "mainAutoCompactNudgeEvery": {
+      "type": "string",
+      "title": "Main chat: nudge step",
+      "description": "The step between nudges past the first, for the main chat: a percentage of the model's window (\"30%\"), or tokens: an integer or a k/m suffix (\"300k\").",
+      "default": "10%"
+    },
+    "mainAutoCompactEnabled": {
+      "type": "boolean",
+      "title": "Main chat: automatic compaction",
+      "description": "Off: the main chat is never nudged or compacted automatically; its own request to compact still runs.",
+      "default": true
     },
     "subagentAutoCompact": {
       "type": "string",
-      "title": "Sub-agent auto-compact point",
-      "description": "Context tokens at which a sub-agent compacts when its agent definition carries no autoCompact frontmatter: an integer or a k/m suffix.",
-      "default": "150000"
+      "title": "Sub-agent: forced compaction point",
+      "description": "Where a sub-agent whose definition does not set it (frontmatter overrides it) is compacted even if its model never asked: a percentage of the model's window (\"30%\"), or tokens: an integer or a k/m suffix (\"300k\").",
+      "default": "30%"
+    },
+    "subagentAutoCompactNudgeStart": {
+      "type": "string",
+      "title": "Sub-agent: first nudge",
+      "description": "Where a sub-agent whose definition does not set it (frontmatter overrides it) is first told to reach a milestone and compact itself: a percentage of the model's window (\"30%\"), or tokens: an integer or a k/m suffix (\"300k\").",
+      "default": "10%"
+    },
+    "subagentAutoCompactNudgeEvery": {
+      "type": "string",
+      "title": "Sub-agent: nudge step",
+      "description": "The step between nudges past the first, for a sub-agent whose definition does not set it (frontmatter overrides it): a percentage of the model's window (\"30%\"), or tokens: an integer or a k/m suffix (\"300k\").",
+      "default": "10%"
+    },
+    "subagentAutoCompactEnabled": {
+      "type": "boolean",
+      "title": "Sub-agent: automatic compaction",
+      "description": "Off: a sub-agent whose definition does not set it (frontmatter overrides it) is never nudged or compacted automatically; its own request to compact still runs.",
+      "default": true
     },
     "agentDirs": {
       "type": "string",

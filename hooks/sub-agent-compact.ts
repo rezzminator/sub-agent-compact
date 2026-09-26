@@ -1,11 +1,18 @@
 import type { EngineInterface, On, PluginOptions, Register } from 'claude-code';
-import { AgentLimits } from '../src/agents.ts';
+import { AgentPolicies } from '../src/agents.ts';
 import { contextTokens, currentTokens, decide } from '../src/decide.ts';
-import { resolveOptions, type ResolvedOptions } from '../src/limits.ts';
+import { resolveOptions, sizeTokens, type Policy, type ResolvedOptions } from '../src/limits.ts';
 import { appendRows, sessionLogPath } from '../src/log.ts';
+import { armedText, CONTINUE_AFTER_MARKER, markerRequest, nudgeText, stopRequest } from '../src/nudge.ts';
+import { Parties } from '../src/parties.ts';
+import { engineAskPoint, isHaiku, modelWindow } from '../src/window.ts';
 
 // Thin adapter: every decision lives in src/. Each hook catches its own
 // failures, logs them with context and lets the compaction through.
+
+const COMPACT_TOOL = 'compact';
+/** The main chat's window when $.session.usage() cannot be read. */
+const FALLBACK_WINDOW = 200_000;
 
 const LOG_CAP = 2000;
 
@@ -18,10 +25,17 @@ function message(error: unknown): string {
 type State = {
   config: ResolvedOptions;
   started?: Promise<void>;
-  limits?: AgentLimits;
-  nativeWindow?: number;
+  policies?: AgentPolicies;
+  /** CLAUDE_CODE_AUTO_COMPACT_WINDOW: the window Claude Code compacts against, so it asks from that less its buffer. */
+  compactWindow?: number;
+  /** The main chat's model window, from $.session.usage(). */
+  mainWindow?: number;
+  /** The compact tool's full name once registered. */
+  toolName?: string;
   typeById: Map<string, string>;
-  readings: Map<string, number>;
+  /** Per party ("main" or an agent id): its model, from its last response. */
+  models: Map<string, string>;
+  parties: Parties;
   asked: Set<string>;
   warned: Set<string>;
   pending: string[];
@@ -82,16 +96,21 @@ function start(st: State, $: EngineInterface): Promise<void> {
       $.ui.log(`sub-agent-compact: reading HOME failed: ${message(error)}; skipping ~/.claude/agents`);
     }
     try {
+      st.mainWindow = (await $.session.usage()).context.window;
+    } catch (error) {
+      $.ui.log(`sub-agent-compact: reading the main chat's window failed: ${message(error)}; percentages use ${FALLBACK_WINDOW}`);
+    }
+    try {
       const raw = await $.env.get('CLAUDE_CODE_AUTO_COMPACT_WINDOW');
       const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-      if (Number.isFinite(parsed) && parsed > 0) st.nativeWindow = parsed;
+      if (Number.isFinite(parsed) && parsed > 0) st.compactWindow = parsed;
     } catch (error) {
       $.ui.log(`sub-agent-compact: reading CLAUDE_CODE_AUTO_COMPACT_WINDOW failed: ${message(error)}`);
     }
     const dirs = [`${cwd}/.claude/agents`, ...(home ? [`${home}/.claude/agents`] : []), ...st.config.agentDirs];
-    st.limits = new AgentLimits(
+    st.policies = new AgentPolicies(
       dirs,
-      st.config.subagentAutoCompact,
+      st.config.subagent,
       {
         exists: (path) => $.fs.exists(path),
         read: (path) => $.fs.read(path),
@@ -103,7 +122,7 @@ function start(st: State, $: EngineInterface): Promise<void> {
         record(st, $, { event: 'resolve-error', line });
       },
     );
-    record(st, $, { event: 'start', mainAutoCompact: st.config.mainAutoCompact, subagentAutoCompact: st.config.subagentAutoCompact, agentDirs: dirs, nativeWindow: st.nativeWindow ?? null });
+    record(st, $, { event: 'start', main: st.config.main, subagent: st.config.subagent, agentDirs: dirs, mainWindow: st.mainWindow ?? null, compactWindow: st.compactWindow ?? null });
   })();
   return st.started;
 }
@@ -117,11 +136,99 @@ async function agentType(st: State, $: EngineInterface, agentId: string): Promis
   return agent.type;
 }
 
+type Party = {
+  /** "main" or the agent id: the key of every per-party map. */
+  key: string;
+  /** "main" or the sub-agent's type. */
+  label: string;
+  main: boolean;
+  policy: Policy;
+  /** Where the policy came from: mainAutoCompact*, subagentAutoCompact*, or a definition file. */
+  source: string;
+  window: number;
+  /** Haiku runs on Claude Code's own compaction point: no nudges, no self-compaction. */
+  haiku: boolean;
+};
+
+async function partyOf(st: State, $: EngineInterface, agentId: string | undefined): Promise<Party> {
+  await start(st, $);
+  const key = agentId ?? 'main';
+  const model = st.models.get(key);
+  const window = modelWindow(model, st.mainWindow ?? FALLBACK_WINDOW);
+  if (!agentId) return { key, label: 'main', main: true, policy: st.config.main, source: 'mainAutoCompact', window, haiku: isHaiku(model) };
+  const label = await agentType(st, $, agentId);
+  const resolved = await st.policies!.resolve(label);
+  const source = resolved.source === 'default' ? 'subagentAutoCompact' : resolved.source;
+  return { key, label, main: false, policy: resolved.policy, source, window, haiku: isHaiku(model) };
+}
+
+/** The forced point in tokens; Haiku's is Claude Code's own ask point for its window. */
+function limitOf(party: Party): number {
+  return party.haiku ? engineAskPoint(party.window) : sizeTokens(party.policy.autoCompact, party.window);
+}
+
+function askPointOf(st: State): number | undefined {
+  return st.compactWindow === undefined ? undefined : engineAskPoint(st.compactWindow);
+}
+
+/** Records the party's own request to compact; refused for Haiku. */
+function arm(st: State, $: EngineInterface, party: Party, focus: string, via: 'tool' | 'marker' | 'stop'): boolean {
+  if (party.haiku) {
+    record(st, $, { event: 'arm-refused', via, party: party.key, type: party.label, why: 'haiku' });
+    return false;
+  }
+  st.parties.arm(party.key, focus);
+  record(st, $, { event: 'armed', via, party: party.key, type: party.label, tokens: st.parties.reading(party.key) ?? null, focus });
+  return true;
+}
+
+/** The nudge line owed after this tool call, once the party's context passed a nudge point it was not yet told about. */
+async function nudgeFor(st: State, $: EngineInterface, agentId: string | undefined): Promise<string | undefined> {
+  const party = await partyOf(st, $, agentId);
+  if (party.haiku || !party.policy.enabled) return undefined;
+  const nudgeStart = sizeTokens(party.policy.nudgeStart, party.window);
+  const nudgeEvery = sizeTokens(party.policy.nudgeEvery, party.window);
+  const level = st.parties.nudgeDue(party.key, nudgeStart, nudgeEvery);
+  const tokens = st.parties.reading(party.key);
+  if (level === undefined || tokens === undefined) return undefined;
+  const autoCompact = limitOf(party);
+  record(st, $, { event: 'nudge', party: party.key, type: party.label, tokens, level, nudgeStart, nudgeEvery, autoCompact, window: party.window });
+  return nudgeText({ tokens, window: party.window, level, autoCompact, main: party.main, toolName: st.toolName ?? `mcp__sub-agent-compact__${COMPACT_TOOL}` });
+}
+
+async function registerCompactTool(st: State, $: EngineInterface): Promise<void> {
+  try {
+    const { tool } = await $.tool.register({
+      name: COMPACT_TOOL,
+      description:
+        'Compact your own context now, at a milestone you choose. The summary keeps what `focus` names, so name the plan or its file, what is done, what is left and the next step. Write anything you must not lose to a file first. Use it when sub-agent-compact nudges you, or after finishing a unit of work while your context is large.',
+      inputSchema: {
+        type: 'object',
+        properties: { focus: { type: 'string', description: 'What the summary must keep: the plan or its file, what is done, what is left, the next step.' } },
+        required: ['focus'],
+      },
+    });
+    st.toolName = tool;
+    record(st, $, { event: 'tool-registered', tool });
+  } catch (error) {
+    $.ui.log(`sub-agent-compact: registering the ${COMPACT_TOOL} tool failed: ${message(error)}; models can still ask with <compact-now>`);
+    record(st, $, { event: 'tool-register-failed', error: message(error) });
+  }
+}
+
+async function answerCompactTool(st: State, $: EngineInterface, agentId: string | undefined, focus: unknown): Promise<string> {
+  if (typeof focus !== 'string' || focus.trim() === '') return 'Not armed: `focus` must name what the summary keeps (the plan or its file, what is done, what is left, the next step).';
+  const party = await partyOf(st, $, agentId);
+  if (!arm(st, $, party, focus.trim(), 'tool')) return 'Not armed: self-compaction is off for Haiku agents; Claude Code compacts them at its own point.';
+  return armedText({ main: party.main, tokens: st.parties.reading(party.key), askPoint: askPointOf(st) });
+}
+
 export const register: Register = (on: On, options: PluginOptions) => {
   const st: State = {
     config: resolveOptions(options as Record<string, unknown>),
     typeById: new Map(),
-    readings: new Map(),
+    models: new Map(),
+    parties: new Parties(),
     asked: new Set(),
     warned: new Set(),
     pending: [],
@@ -130,64 +237,110 @@ export const register: Register = (on: On, options: PluginOptions) => {
     mainCompacting: false,
   };
 
-  // Track each loop's context from its responses' usage.
+  on('session.start', async ($, e, next) => {
+    const result = await next(e);
+    await registerCompactTool(st, $);
+    return result;
+  });
+
+  // Track each loop's context and model from its responses, and read a sub-agent's <compact-now> request in its text.
   on('turn.step', async function* ($, e, next) {
     const result = yield* next(e);
+    const key = e.agentId ?? 'main';
     try {
+      st.models.set(key, e.model);
       const tokens = contextTokens(result.usage);
-      if (tokens !== undefined) st.readings.set(e.agentId ?? 'main', tokens);
+      if (tokens !== undefined) st.parties.read(key, tokens);
+      const focus = markerRequest({ answer: result.answer, toolCalls: result.toolUses.length, main: e.agentId === undefined });
+      if (focus !== undefined) arm(st, $, await partyOf(st, $, e.agentId), focus, 'marker');
     } catch (error) {
-      $.ui.log(`sub-agent-compact: reading turn.step usage failed: ${message(error)}`);
+      $.ui.log(`sub-agent-compact: reading turn.step for ${key} failed: ${message(error)}`);
     }
     return result;
   });
 
-  on('session.compact', async ($, e, next) => {
-    const agentId = e.agentId;
-    const base: Row = { event: 'session.compact', trigger: e.trigger, party: agentId ? 'sub' : 'main', agentId: agentId ?? null };
-    let label = 'main';
-    let limit = st.config.mainAutoCompact;
-    let source = 'mainAutoCompact';
-    let tokens: number | undefined;
+  // Serve the compact tool; after any other tool, carry a nudge the party is owed.
+  on('tool.call', async ($, e, next) => {
+    if (st.toolName !== undefined && e.tool === st.toolName) {
+      try {
+        return { result: await answerCompactTool(st, $, e.agentId, (e as Record<string, unknown>).focus) };
+      } catch (error) {
+        $.ui.log(`sub-agent-compact: arming ${e.agentId ?? 'main'} failed: ${message(error)}`);
+        return { result: `Not armed: ${message(error)}` };
+      }
+    }
+    const result = await next(e);
+    if (result.deny !== undefined) return result;
     try {
-      await start(st, $);
-      if (agentId) {
-        label = await agentType(st, $, agentId);
-        const resolved = await st.limits!.resolve(label);
-        limit = resolved.limit;
-        source = resolved.source === 'default' ? 'subagentAutoCompact' : resolved.source;
-        tokens = currentTokens(st.readings.get(agentId), e.messages);
-        if (st.nativeWindow !== undefined && limit < st.nativeWindow) {
-          warnOnce(st, $, `below-window:${label}`, `sub-agent-compact: ${label} limit ${limit} is below CLAUDE_CODE_AUTO_COMPACT_WINDOW ${st.nativeWindow}; Claude Code will not ask to compact it before ${st.nativeWindow} — set the window to your smallest sub-agent limit`);
+      const line = await nudgeFor(st, $, e.agentId);
+      if (line !== undefined) return { ...result, context: [...(result.context ?? []), line] };
+    } catch (error) {
+      $.ui.log(`sub-agent-compact: nudging ${e.agentId ?? 'main'} failed: ${message(error)}`);
+    }
+    return result;
+  });
+
+  // A sub-agent that sent its marker alone ended its run: arm it and refuse the stop once, so it compacts and carries on.
+  on('classic.SubagentStop', async ($, e, next) => {
+    try {
+      const focus = stopRequest({ lastMessage: e.last_assistant_message, continued: st.parties.continued(e.agent_id) });
+      if (focus !== undefined) {
+        const party = await partyOf(st, $, e.agent_id);
+        if (arm(st, $, party, focus, 'stop')) {
+          st.parties.markContinued(e.agent_id);
+          record(st, $, { event: 'stop-refused', party: e.agent_id, type: party.label });
+          return { block: CONTINUE_AFTER_MARKER };
         }
-      } else {
-        tokens = currentTokens((await $.session.usage()).context.tokens, e.messages);
       }
     } catch (error) {
-      const line = `sub-agent-compact: deciding ${agentId ? `sub-agent ${agentId}` : 'main'} ${e.trigger} compaction failed: ${message(error)}; letting it through`;
-      $.ui.log(line);
-      record(st, $, { ...base, type: label, decision: 'pass', why: 'error', error: message(error) });
-      return next(e);
+      $.ui.log(`sub-agent-compact: reading ${e.agent_id}'s stop failed: ${message(error)}; letting it stop`);
     }
-    const decision = decide({ trigger: e.trigger, label, limit, tokens });
-    const lastResponse = agentId ? st.readings.get(agentId) : st.readings.get('main');
-    record(st, $, { ...base, type: label, limit, source, tokens: tokens ?? null, lastResponseTokens: lastResponse ?? null, messages: e.messages.length, decision: decision.action, ...(decision.action === 'pass' ? { why: decision.why } : {}) });
-    if (decision.action === 'skip') {
-      if (e.trigger === 'auto') st.asked.add(agentId ?? 'main');
-      return { skip: decision.reason };
-    }
-    if (decision.why === 'no-reading') $.ui.log(`sub-agent-compact: no token reading for ${label}; letting the ${e.trigger} compaction through`);
-    const firstAsk = !st.asked.has(agentId ?? 'main');
-    if (e.trigger === 'auto') st.asked.add(agentId ?? 'main');
-    // With the window known, a first ask past the limit is one step's growth, not a window set too high.
-    if (e.trigger === 'auto' && firstAsk && st.nativeWindow === undefined && tokens !== undefined && tokens > limit * 1.1) {
-      warnOnce(st, $, `late:${label}`, `sub-agent-compact: ${label} was first asked to compact at ${tokens}, past its limit ${limit}; CLAUDE_CODE_AUTO_COMPACT_WINDOW is unset, so Claude Code's native window is likely above this limit — set it to your smallest sub-agent limit`);
-    }
-    if (!agentId) st.mainCompactedThisTurn = true;
     return next(e);
   });
 
-  // Main earlier than the native window: compact between turns once past mainAutoCompact.
+  on('session.compact', async ($, e, next) => {
+    const agentId = e.agentId;
+    const key = agentId ?? 'main';
+    const base: Row = { event: 'session.compact', trigger: e.trigger, party: agentId ? 'sub' : 'main', agentId: agentId ?? null };
+    let party: Party;
+    let tokens: number | undefined;
+    try {
+      party = await partyOf(st, $, agentId);
+      tokens = agentId ? currentTokens(st.parties.reading(agentId), e.messages) : currentTokens((await $.session.usage()).context.tokens, e.messages);
+    } catch (error) {
+      const line = `sub-agent-compact: deciding ${agentId ? `sub-agent ${agentId}` : 'main'} ${e.trigger} compaction failed: ${message(error)}; letting it through`;
+      $.ui.log(line);
+      record(st, $, { ...base, decision: 'pass', why: 'error', error: message(error) });
+      return next(e);
+    }
+    const limit = limitOf(party);
+    const askPoint = askPointOf(st);
+    if (!party.main && !party.haiku && askPoint !== undefined && limit < askPoint) {
+      warnOnce(st, $, `below-window:${party.label}`, `sub-agent-compact: ${party.label} limit ${limit} is below Claude Code's ask point ${askPoint} (CLAUDE_CODE_AUTO_COMPACT_WINDOW ${st.compactWindow}); it compacts at ${askPoint} — lower the window to hold this limit`);
+    }
+    const armed = party.haiku ? undefined : st.parties.armed(key);
+    const decision = decide({ trigger: e.trigger, label: party.label, limit, tokens, enabled: party.haiku || party.policy.enabled, armed });
+    record(st, $, { ...base, type: party.label, limit, source: party.haiku ? 'haiku' : party.source, tokens: tokens ?? null, lastResponseTokens: st.parties.reading(key) ?? null, messages: e.messages.length, decision: decision.action, ...(decision.action === 'pass' ? { why: decision.why } : {}) });
+    if (decision.action === 'skip') {
+      if (e.trigger === 'auto') st.asked.add(key);
+      return { skip: decision.reason };
+    }
+    if (decision.why === 'no-reading') $.ui.log(`sub-agent-compact: no token reading for ${party.label}; letting the ${e.trigger} compaction through`);
+    const firstAsk = !st.asked.has(key);
+    if (e.trigger === 'auto') st.asked.add(key);
+    // With the window known, a first ask past the limit is one step's growth, not a window set too high.
+    if (e.trigger === 'auto' && firstAsk && st.compactWindow === undefined && tokens !== undefined && tokens > limit * 1.1) {
+      warnOnce(st, $, `late:${party.label}`, `sub-agent-compact: ${party.label} was first asked to compact at ${tokens}, past its limit ${limit}; CLAUDE_CODE_AUTO_COMPACT_WINDOW is unset, so Claude Code's native window is likely above this limit — set it to your smallest sub-agent limit`);
+    }
+    if (!agentId) st.mainCompactedThisTurn = true;
+    // A self-compaction's focus becomes what the summarizer is told; a person's or plugin's instructions come first.
+    const input = decision.why === 'self' && armed !== undefined ? { ...e, instructions: e.instructions ? `${e.instructions}\n\n${armed}` : armed } : e;
+    const outcome = await next(input);
+    if (outcome.skip === undefined && e.trigger !== 'precompute') st.parties.compacted(key, outcome.tokensAfter);
+    return outcome;
+  });
+
+  // Main between turns: the compaction its model armed below Claude Code's ask point, or its forced point.
   on('turn.complete', async ($, e, next) => {
     const result = await next(e);
     if (e.agentId) return result;
@@ -197,15 +350,18 @@ export const register: Register = (on: On, options: PluginOptions) => {
     }
     if (st.mainCompacting) return result;
     try {
-      await start(st, $);
+      const party = await partyOf(st, $, undefined);
+      const focus = party.haiku ? undefined : st.parties.armed('main');
       const tokens = (await $.session.usage()).context.tokens;
-      if (tokens === undefined || tokens < st.config.mainAutoCompact) return result;
+      const limit = limitOf(party);
+      const forced = party.policy.enabled && tokens !== undefined && tokens >= limit;
+      if (focus === undefined && !forced) return result;
       st.mainCompacting = true;
-      record(st, $, { event: 'turn.complete', party: 'main', tokens, limit: st.config.mainAutoCompact, action: 'compact' });
-      const outcome = await $.session.compact();
+      record(st, $, { event: 'turn.complete', party: 'main', tokens: tokens ?? null, limit, action: 'compact', why: focus !== undefined ? 'self' : 'at-limit' });
+      const outcome = await $.session.compact(focus !== undefined ? { instructions: focus } : {});
       record(st, $, { event: 'turn.complete.compacted', party: 'main', skipped: 'skip' in outcome && outcome.skip ? outcome.skip : null });
     } catch (error) {
-      $.ui.log(`sub-agent-compact: early main compaction failed: ${message(error)}`);
+      $.ui.log(`sub-agent-compact: compacting main between turns failed: ${message(error)}`);
       record(st, $, { event: 'turn.complete', party: 'main', error: message(error) });
     } finally {
       st.mainCompacting = false;

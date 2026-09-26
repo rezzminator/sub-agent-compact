@@ -1,5 +1,5 @@
 import { parseFrontmatter } from './frontmatter.ts';
-import { parseLimit } from './limits.ts';
+import { frontmatterKey, readPolicy, type Policy } from './limits.ts';
 
 export type AgentFs = {
   exists: (path: string) => Promise<boolean>;
@@ -8,9 +8,9 @@ export type AgentFs = {
   listMarkdown: (dir: string) => Promise<string[]>;
 };
 
-export type AgentLimit = {
-  limit: number;
-  /** The definition file the limit came from, or `default`. */
+export type AgentPolicy = {
+  policy: Policy;
+  /** The definition file that set at least one compaction key, or `default`. */
   source: string;
 };
 
@@ -19,23 +19,25 @@ function join(dir: string, name: string): string {
 }
 
 /**
- * Resolves an agent type to its compact point: `<dir>/<type>.md` in each
+ * Resolves an agent type to its compaction policy: `<dir>/<type>.md` in each
  * directory in order, then any file whose frontmatter `name:` is the type
- * (the directories scanned once), else the default. Every failure is logged
- * and falls back to the default; results are cached per type.
+ * (the directories scanned once), else the default. The frontmatter keys
+ * `autoCompact`, `autoCompactNudgeStart`, `autoCompactNudgeEvery` and
+ * `autoCompactEnabled` each override the default's field. Every failure is
+ * logged and falls back to the default; results are cached per type.
  */
-export class AgentLimits {
-  private readonly byType = new Map<string, Promise<AgentLimit>>();
+export class AgentPolicies {
+  private readonly byType = new Map<string, Promise<AgentPolicy>>();
   private nameIndex: Promise<Map<string, string>> | undefined;
 
   constructor(
     private readonly dirs: readonly string[],
-    private readonly fallback: number,
+    private readonly fallback: Policy,
     private readonly fs: AgentFs,
     private readonly log: (line: string) => void,
   ) {}
 
-  resolve(type: string): Promise<AgentLimit> {
+  resolve(type: string): Promise<AgentPolicy> {
     let hit = this.byType.get(type);
     if (!hit) {
       hit = this.lookup(type);
@@ -44,7 +46,7 @@ export class AgentLimits {
     return hit;
   }
 
-  private async lookup(type: string): Promise<AgentLimit> {
+  private async lookup(type: string): Promise<AgentPolicy> {
     for (const dir of this.dirs) {
       const path = join(dir, `${type}.md`);
       let found = false;
@@ -63,16 +65,17 @@ export class AgentLimits {
       const fields = await this.fields(byName);
       if (fields) return this.fromFields(type, byName, fields);
     }
-    return { limit: this.fallback, source: 'default' };
+    return { policy: this.fallback, source: 'default' };
   }
 
-  private fromFields(type: string, path: string, fields: Record<string, string>): AgentLimit {
-    const raw = fields.autoCompact;
-    if (raw === undefined || raw === '') return { limit: this.fallback, source: 'default' };
-    const parsed = parseLimit(raw);
-    if (parsed.ok) return { limit: parsed.value, source: path };
-    this.log(`sub-agent-compact: ${path} autoCompact for ${type} is invalid (${parsed.error}); using the default ${this.fallback}`);
-    return { limit: this.fallback, source: 'default' };
+  private fromFields(type: string, path: string, fields: Record<string, string>): AgentPolicy {
+    const { policy, set } = readPolicy(
+      (field) => fields[frontmatterKey(field)],
+      this.fallback,
+      (field, error, fallbackText) =>
+        this.log(`sub-agent-compact: ${path} ${frontmatterKey(field)} for ${type} is invalid (${error}); using the default ${fallbackText}`),
+    );
+    return set ? { policy, source: path } : { policy: this.fallback, source: 'default' };
   }
 
   private async fields(path: string): Promise<Record<string, string> | undefined> {
