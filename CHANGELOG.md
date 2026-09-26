@@ -5,6 +5,7 @@ Every release of sub-agent-compact. Versions follow [semantic versioning](https:
 ## [Unreleased]
 
 ### Changed
+- The plugin names Professor as its maker: the manifest's author and keywords, and the READMEs.
 - The marketplace installs the plugin from `main` (a `git-subdir` source), so an install only ever gets a released version while work lands on `develop`.
 
 ## [0.2.3] — 2026-09-26

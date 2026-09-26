@@ -13,3 +13,5 @@ autoCompact:
 ```
 
 It requires `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`. The full documentation, the benchmark and the options live in the repository: https://github.com/rezzminator/sub-agent-compact
+
+Built and maintained with [Professor](https://github.com/rezzminator/professor).

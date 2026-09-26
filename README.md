@@ -8,6 +8,7 @@
 [![Version](https://img.shields.io/badge/version-0.2.3-blue)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)](#development)
+[![Built with Professor](https://img.shields.io/badge/built%20with-Professor-8A2BE2)](https://github.com/rezzminator/professor)
 
 **34% cheaper** than a sub-agent that never compacts · **52% less context** re-sent on every request
 
@@ -300,6 +301,10 @@ Work lands on `develop`; `main` holds only releases, and each one is tagged `sub
 | `nudge.ts` | Nudge levels and text, the `<compact-now>` marker, the compact tool's reply |
 | `parties.ts` | Per-party state: readings, the armed focus, nudges sent, a refused stop |
 | `decide.ts` | The decision for one compaction request |
+
+## 🎓 Built with Professor
+
+sub-agent-compact is built and maintained with [Professor](https://github.com/rezzminator/professor), a fleet controller and discipline layer for Claude Code, Codex and OpenCode: chats that message each other, agents held to the project's rules, and gated releases. This plugin came out of it: Professor runs long orchestrations of sub-agents, and their context bills are why per-agent compaction exists.
 
 ## License
 
