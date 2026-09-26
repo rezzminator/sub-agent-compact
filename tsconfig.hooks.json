@@ -16,5 +16,5 @@
       "claude-code": ["./types/claude-code.d.ts"]
     }
   },
-  "include": ["hooks", "src", "types"]
+  "include": ["plugins/sub-agent-compact/hooks", "plugins/sub-agent-compact/src", "types"]
 }

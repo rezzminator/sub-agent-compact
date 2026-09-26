@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { armedText, compactMarker, markerRequest, nudgeLevel, nudgeText, stopRequest } from '../src/nudge.ts';
-import { ENGINE_COMPACT_BUFFER, engineAskPoint, isHaiku, modelWindow } from '../src/window.ts';
+import { armedText, compactMarker, markerRequest, nudgeLevel, nudgeText, stopRequest } from '../plugins/sub-agent-compact/src/nudge.ts';
+import { ENGINE_COMPACT_BUFFER, engineAskPoint, isHaiku, modelWindow } from '../plugins/sub-agent-compact/src/window.ts';
 
 describe('modelWindow', () => {
   it('knows Haiku at 200k, a [1m] id and Sonnet 5 at 1M', () => {

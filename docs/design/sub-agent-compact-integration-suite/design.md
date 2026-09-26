@@ -4,7 +4,7 @@ The test suite design for the `sub-agent-compact` Claude Code plugin: the three 
 
 The ledgers beside this file are `landscape.md`, `beats.md`, `map.tsv`, `pending.txt`, `retired.tsv`, `references.tsv`, `roster.txt`, `skip-reasons.txt`, `unobservable.txt`, `self-tests.txt`, `exclusions.txt`, `ruled-copy.tsv`, `gaps.tsv`, `flakes.tsv`, `bites.tsv`, `budgets.tsv` and `runs/`. The checks live at the repository root in `scripts/suite-checks.sh` and `scripts/suite-checks/`.
 
-The product is one TypeScript function-hook module. Claude Code loads `hooks/sub-agent-compact.ts` verbatim, as named by `hooks/hooks.json` and `.claude-plugin/plugin.json`; there is no build step. The module:
+The product is one TypeScript function-hook module. Claude Code loads `plugins/sub-agent-compact/hooks/sub-agent-compact.ts` verbatim, as named by `plugins/sub-agent-compact/hooks/hooks.json` and `plugins/sub-agent-compact/.claude-plugin/plugin.json`; there is no build step. The module:
 
 - registers three handlers: `turn.step`, `session.compact` and `turn.complete`;
 - reads its options from the engine;
@@ -17,7 +17,7 @@ The owner ruled this section (`brief-tiers`, `brief-fence`, `brief-live-isolatio
 
 ### Unit
 
-**What it asserts.** Every decision, option parse, frontmatter read, log path and row cap in `src/`. It also covers the hook glue in `hooks/sub-agent-compact.ts` (`register`, the three handlers, `start`, `record`, `warnOnce`). The glue runs in-process against the scripted engine interface from the fakes directory. These are the 48 existing vitest tests, kept and retitled (section 3), plus the rows `beats.md` adds.
+**What it asserts.** Every decision, option parse, frontmatter read, log path and row cap in `plugins/sub-agent-compact/src/`. It also covers the hook glue in `plugins/sub-agent-compact/hooks/sub-agent-compact.ts` (`register`, the three handlers, `start`, `record`, `warnOnce`). The glue runs in-process against the scripted engine interface from the fakes directory. These are the 48 existing vitest tests, kept and retitled (section 3), plus the rows `beats.md` adds.
 
 **What it fakes.** Two things:
 - the engine interface `$` (`tests/fakes/engine.ts`);
@@ -31,13 +31,13 @@ boot-unit: none
 ### Hermetic
 
 **What it asserts.** What only a separate process can show:
-- the manifest-to-module boot path: `.claude-plugin/plugin.json`, then `hooks/hooks.json`, then importing the named module unchanged;
+- the manifest-to-module boot path: `plugins/sub-agent-compact/.claude-plugin/plugin.json`, then `plugins/sub-agent-compact/hooks/hooks.json`, then importing the named module unchanged;
 - the options key the engine hands over;
 - the per-session log file really written on disk;
 - one success and one refusal per operation.
 
 **What it fakes.** A fake engine, `tests/hermetic/engine.ts`, runs as its own Node 22 process. It:
-- reads the manifest and `hooks/hooks.json` and imports the named modules;
+- reads the manifest and `plugins/sub-agent-compact/hooks/hooks.json` and imports the named modules;
 - calls `register(on, options)` with the options shaped as `pluginConfigs["<name>@<marketplace>"].options`;
 - dispatches the scripted `turn.step` (usage per agentId), `session.compact` (trigger, agentId, messages) and `turn.complete` events from a scenario file under `tests/hermetic/scenarios/`;
 - backs `$` with fakes: `fs` over a per-run temp root, `agent.list`, `session.id`, `session.cwd`, `session.usage`, `session.compact`, `env.get`, and a `ui.log` capture;
@@ -126,8 +126,8 @@ llm-rehearsal: none — the product has no LLM-driven steps; haiku only drives C
 `landscape.md` holds 27 capabilities. They come from the product's registry, closed-world:
 - the three `on(...)` registrations;
 - the seven `event:` values that `record` writes;
-- the `userConfig` keys in `.claude-plugin/plugin.json`;
-- the `ui.log` lines in `hooks/sub-agent-compact.ts`.
+- the `userConfig` keys in `plugins/sub-agent-compact/.claude-plugin/plugin.json`;
+- the `ui.log` lines in `plugins/sub-agent-compact/hooks/sub-agent-compact.ts`.
 
 | Area | Rows | today: NONE |
 | --- | --- | --- |
@@ -148,7 +148,7 @@ The baseline is `today: NONE` = 8:
 - `warning.below-window` and `warning.late-ask`;
 - `log.write-failure` and `log.no-message-text`.
 
-The existing tests cover `src/` only. No test runs the hook glue.
+The existing tests cover `plugins/sub-agent-compact/src/` only. No test runs the hook glue.
 
 **Ruled rows.** The rows on the safety surface are `ruled:yes`, sourced from README rulings (`readme-lookup-failure-passes`) and the redaction ruling (`ruling-log-redaction`):
 - `compact.no-reading-pass`;
@@ -157,7 +157,7 @@ The existing tests cover `src/` only. No test runs the hook glue.
 
 **Exclusions applied.** The `exclusion` spelling set drops toolchain operations (`typecheck`, `validate:plugin`, `test`). It also drops the vendored engine types in `types/claude-code.d.ts`: a contract the product reads, not a capability.
 
-**The defect row (`brief-window-defect`).** `warning.below-window` compares a limit against the raw `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`hooks/sub-agent-compact.ts:85`). Claude Code clamps that value to 100k–1M and to the model's maximum context (`measured-window-floor`). So under 100k the warning names a window the engine does not use. The fix lands in build step 4 with its test watched failing first.
+**The defect row (`brief-window-defect`).** `warning.below-window` compares a limit against the raw `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`plugins/sub-agent-compact/hooks/sub-agent-compact.ts:85`). Claude Code clamps that value to 100k–1M and to the model's maximum context (`measured-window-floor`). So under 100k the warning names a window the engine does not use. The fix lands in build step 4 with its test watched failing first.
 
 ## 3. Existing tests
 
@@ -180,11 +180,11 @@ The retitled suites also absorb:
 - **Engine interface `$`** (`EngineInterface`, `types/claude-code.d.ts`). This is the one seam for the filesystem, environment, session, agent registry and user log. The engine injects it into every handler.
   - Its fake is `tests/fakes/engine.ts`: a scripted `$` that records every call and throws `unscripted $.<path>(<args>)` on a call the scenario does not script.
   - Its contract suite, `tests/contracts/engine.contract.test.ts`, runs the same cases against the fake at unit and hermetic tiers. The live tier checks the real `$` through the recorder plugin's result-shape captures, compared against `tests/goldens/engine-shapes/` (`brief-goldens`, Law 2).
-- **Agent filesystem** (`AgentFs`, `src/agents.ts:27`, built over `$.fs` at `hooks/sub-agent-compact.ts:96`).
-  - Build step 4 moves the adapter into `src/agent-fs.ts` so a contract can reach it.
+- **Agent filesystem** (`AgentFs`, `plugins/sub-agent-compact/src/agents.ts:27`, built over `$.fs` at `plugins/sub-agent-compact/hooks/sub-agent-compact.ts:96`).
+  - Build step 4 moves the adapter into `plugins/sub-agent-compact/src/agent-fs.ts` so a contract can reach it.
   - Its fake is `tests/fakes/memory-agent-fs.ts`, the inline `memoryFs` moved out of `tests/decisions.test.ts`.
   - Its contract suite, `tests/contracts/agent-fs.contract.test.ts`, runs against the fake and against the real adapter over a `$.fs` backed by a real temp directory.
-- **Clock.** The one bare door is `new Date()` in `record` (`hooks/sub-agent-compact.ts:39`). It is kept bare because it writes only the log's `ts`, an unobservable class (`timestamp`), and no decision reads it. It is the single entry of `scripts/suite-checks/bare-doors.baseline`.
+- **Clock.** The one bare door is `new Date()` in `record` (`plugins/sub-agent-compact/hooks/sub-agent-compact.ts:39`). It is kept bare because it writes only the log's `ts`, an unobservable class (`timestamp`), and no decision reads it. It is the single entry of `scripts/suite-checks/bare-doors.baseline`.
 
 fakes-directory: tests/fakes
 scratch-migration-directory: none
@@ -198,7 +198,7 @@ The product loads no non-code asset. Its messages are code literals, so the rend
 Each fixture below is chosen because the product has the behaviour it probes:
 
 1. **Read-only home.** The log directory is unwritable. `log.write-failure` must log once through `ui.log`, and decisions still go through. This runs as a unit case over the fake `fs.write` fault, and as a hermetic case with a `chmod 0555` temp root. Under a superuser it is `skip-because:root-ignores-permissions`; the fence runs as a non-root user, so that skip never fires there.
-2. **Symlinked agent file.** `.claude/agents/<type>.md` is a symlink. The adapter filters `list` results to kind `file` (`hooks/sub-agent-compact.ts:96`), so a renamed, symlinked definition may be skipped. This is a unit case over the fake.
+2. **Symlinked agent file.** `.claude/agents/<type>.md` is a symlink. The adapter filters `list` results to kind `file` (`plugins/sub-agent-compact/hooks/sub-agent-compact.ts:96`), so a renamed, symlinked definition may be skipped. This is a unit case over the fake.
 3. **Case-folding filesystem.** Agent type `Fixture-Reader` against the file `fixture-reader.md`. On the case-sensitive fence filesystem it is `skip-because:case-sensitive-filesystem`; it runs on the macOS host.
 4. **CRLF and BOM agent file.** This is an existing unit case.
 5. **Window env below the floor.** `CLAUDE_CODE_AUTO_COMPACT_WINDOW=25000` with a limit of 45000: the warning must use 100000. This is the defect test.
@@ -267,7 +267,7 @@ These are the `measured-*` rows of `references.tsv`, taken with Claude Code 2.1.
 **Still to measure here:**
 - the unit and hermetic wall times against their targets (build step 3);
 - the live lanes' wall time and spend (build step 7);
-- whether Node 22 type stripping imports `hooks/sub-agent-compact.ts` unchanged (build step 4);
+- whether Node 22 type stripping imports `plugins/sub-agent-compact/hooks/sub-agent-compact.ts` unchanged (build step 4);
 - whether `--resume <session id>` keeps the session id and the per-session log (build step 6);
 - the `trigger` value of a plugin-requested main compaction (build step 8);
 - whether `$.env.get` reads the variables the harness puts in Claude Code's environment (build step 5).
@@ -276,7 +276,7 @@ These are the `measured-*` rows of `references.tsv`, taken with Claude Code 2.1.
 
 | Store | Writers | Readers | What can corrupt it | Correlation |
 | --- | --- | --- | --- | --- |
-| decision log, `decisions.<session id>.jsonl` beside the `logFile` option, under the run root | the plugin (`record`, `hooks/sub-agent-compact.ts:36`), every lane | every lane's assertions; the after-effect beats | a compaction that reloads the plugin (a second `start` row), a rotated session id (a second file), the row cap (older rows dropped), a concurrent writer (lost append) | session id plus `agentId`; the injected `beat` and `run` once build step 5 lands |
+| decision log, `decisions.<session id>.jsonl` beside the `logFile` option, under the run root | the plugin (`record`, `plugins/sub-agent-compact/hooks/sub-agent-compact.ts:36`), every lane | every lane's assertions; the after-effect beats | a compaction that reloads the plugin (a second `start` row), a rotated session id (a second file), the row cap (older rows dropped), a concurrent writer (lost append) | session id plus `agentId`; the injected `beat` and `run` once build step 5 lands |
 | engine transcript, `$HOME/.claude/projects/<cwd slug>/<session id>/` including `subagents/agent-<agentId>.jsonl` | Claude Code | the compaction beats (`compact_boundary` rows) | a resumed session writing a new file; a cwd slug shared by two runs | session id plus `agentId`; the slug is unique per run because the cwd is |
 | temp project, `<run root>/project/.claude/agents/` | the root build | the plugin (`AgentLimits`), Claude Code | an edit between lanes | the run root |
 | run-root `settings.json` | the root build, per lane (the window env and options) | Claude Code | a lane leaving its options for the next | the run root |
@@ -340,8 +340,8 @@ The operation names come from the product itself. Claude Code loads the hook mod
 
 ```sh
 # registry dump: the handlers the module registers and the events it records
-grep -oE "on\('[a-z.]+'" hooks/sub-agent-compact.ts | sed "s/on('//; s/'//"
-grep -oE "event: '[a-z.-]+'" hooks/sub-agent-compact.ts | sed "s/event: '//; s/'//"
+grep -oE "on\('[a-z.]+'" plugins/sub-agent-compact/hooks/sub-agent-compact.ts | sed "s/on('//; s/'//"
+grep -oE "event: '[a-z.-]+'" plugins/sub-agent-compact/hooks/sub-agent-compact.ts | sed "s/event: '//; s/'//"
 # options surface: the userConfig keys
 node -e 'console.log(Object.keys(require("./.claude-plugin/plugin.json").userConfig).join("\n"))'
 ```
@@ -359,8 +359,8 @@ A tier row `tier-unit:<name>` or `tier-hermetic:<name>` is defined by a test who
 ## 10. Activity log
 
 The decision log is the activity log (Law 17):
-- one JSON-lines file per session, `decisions.<session id>.jsonl`, beside the `logFile` option (`src/log.ts:6`);
-- resolved in `start` from the option or the default under `$HOME` (`hooks/sub-agent-compact.ts:75`).
+- one JSON-lines file per session, `decisions.<session id>.jsonl`, beside the `logFile` option (`plugins/sub-agent-compact/src/log.ts:6`);
+- resolved in `start` from the option or the default under `$HOME` (`plugins/sub-agent-compact/hooks/sub-agent-compact.ts:75`).
 
 The live and hermetic tiers point `logFile` inside the run root, so the harness reads one destination per run.
 
@@ -374,7 +374,7 @@ The live and hermetic tiers point `logFile` inside the run root, so the harness 
 
 Build step 5 adds `op` (equal to `event`), `level`, `pid`, `version` (from `plugin.json`), `session`, and the injected `beat` and `run`. `record` reads the last two once through `$.env.get('SUB_AGENT_COMPACT_BEAT')` and `$.env.get('SUB_AGENT_COMPACT_RUN')` in `start`. The wrapping sits at the `record` seam, not at the call sites.
 
-**Rotation.** One file per session, capped at `LOG_CAP` = 2000 rows, with the newest kept (`hooks/sub-agent-compact.ts:10`, `src/log.ts:18`).
+**Rotation.** One file per session, capped at `LOG_CAP` = 2000 rows, with the newest kept (`plugins/sub-agent-compact/hooks/sub-agent-compact.ts:10`, `plugins/sub-agent-compact/src/log.ts:18`).
 
 **Buffer handler.** At unit and hermetic tiers, the fake engine's `fs.write` capture for the log path plus its `ui.log` capture, per test. The ledger reporter writes each test's `op` set from it.
 
@@ -470,7 +470,7 @@ Then come tab-separated rows, `row⇥verdict⇥assertions-by-id⇥expected⇥ops
 **Checkpoints.** After each lane, the runner archives the run root (the project, `settings.json`, the log, the captures) and the transcript slug directory to `$TMPDIR/sub-agent-compact-checkpoints/<root hash>-<lane>.tar`. `--from checkpoint:<lane>` restores the archive and resumes `S`. A checkpoint holds no credential.
 
 **Root hash inputs:**
-- `hooks/`, `src/` and `.claude-plugin/`;
+- `plugins/sub-agent-compact/hooks/`, `plugins/sub-agent-compact/src/` and `.claude-plugin/`;
 - `tests/live/fixtures/` (agents, synthetic read files, the settings template);
 - `tests/live/recorder-plugin/`;
 - `claude --version` and the model name.
@@ -503,13 +503,13 @@ The self-tests are listed in `self-tests.txt`. Each is watched failing before it
 3. **Wall-time budgets for unit and hermetic.** Three green runs pinned into `budgets.tsv` under `tier-unit` (and `tier-hermetic` once step 4 lands). This is measured here.
 4. **Seams, fakes and contracts, the defect, then the unit conversion.**
    - `tests/fakes/engine.ts` and `tests/fakes/memory-agent-fs.ts`.
-   - `src/agent-fs.ts` (the adapter moved out of `hooks/sub-agent-compact.ts:96`).
+   - `plugins/sub-agent-compact/src/agent-fs.ts` (the adapter moved out of `plugins/sub-agent-compact/hooks/sub-agent-compact.ts:96`).
    - `tests/contracts/engine.contract.test.ts` and `tests/contracts/agent-fs.contract.test.ts`.
    - `tests/hermetic/engine.ts` plus `tests/hermetic/scenarios/` and `tests/hermetic/*.test.ts`.
-   - **The window defect, watched failing first.** Write `tier-unit:below-window-warning-uses-clamped-window` in `tests/unit/warning.test.ts`. Then add `effectiveWindow(raw, modelMax)` in `src/window.ts`, clamping to 100000–1000000 and to the model's maximum context, used at `hooks/sub-agent-compact.ts:85`. Then add the 100k floor to `README.md` `## The window rule`.
+   - **The window defect, watched failing first.** Write `tier-unit:below-window-warning-uses-clamped-window` in `tests/unit/warning.test.ts`. Then add `effectiveWindow(raw, modelMax)` in `plugins/sub-agent-compact/src/window.ts`, clamping to 100000–1000000 and to the model's maximum context, used at `plugins/sub-agent-compact/hooks/sub-agent-compact.ts:85`. Then add the 100k floor to `README.md` `## The window rule`.
    - Then the retitle and move of the 48 tests into `tests/unit/<area>.test.ts`, with the new glue rows, `weak-oracle` and `tautological-oracle` burned to 0, and each row's bite in `bites.tsv`.
 5. **The activity log fields, then the recorder and goldens.**
-   - `hooks/sub-agent-compact.ts` `record` and `start`: `op`, `level`, `pid`, `version`, `session`, `beat`, `run`.
+   - `plugins/sub-agent-compact/hooks/sub-agent-compact.ts` `record` and `start`: `op`, `level`, `pid`, `version`, `session`, `beat`, `run`.
    - `tier-unit:rows-carry-no-message-text`.
    - `tests/fixtures/synthetic-log/`.
    - `tests/live/recorder-plugin/`, `tests/live/update-goldens.ts` and `tests/goldens/engine-shapes/`, from a first recorded run.
@@ -526,7 +526,7 @@ The self-tests are listed in `self-tests.txt`. Each is watched failing before it
 9. **The retirement ledger verified.** `retired.tsv` stays empty, since no test is deleted; `retired` passes on the move-only diff.
 10. **Close.**
     - Three green sequences on the merge subject, budgets pinned from them, no flake, and `pending.txt` empty.
-    - `scripts/dev.sh live` wired into the release procedure (the version bump in `.claude-plugin/plugin.json`).
+    - `scripts/dev.sh live` wired into the release procedure (the version bump in `plugins/sub-agent-compact/.claude-plugin/plugin.json`).
 
 **The checks on the tree as written (2026-09-25).** `sh scripts/suite-checks.sh` exits 2. Thirteen checks pass: map-ids, map-beats, map-names, map-dup, landscape-scope, names, oracle, copy, gaps, budgets, retired, bare-doors, size, with `env-twice` at `PASS not-due`. Four report could-not-look, each by name, each cleared by a build step:
 

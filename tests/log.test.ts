@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendRows, sessionLogPath } from '../src/log.ts';
+import { appendRows, sessionLogPath } from '../plugins/sub-agent-compact/src/log.ts';
 
 describe('sessionLogPath', () => {
   it.each([

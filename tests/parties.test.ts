@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Parties } from '../src/parties.ts';
+import { Parties } from '../plugins/sub-agent-compact/src/parties.ts';
 
 describe('Parties', () => {
   it('owes each nudge level once, and none while armed', () => {

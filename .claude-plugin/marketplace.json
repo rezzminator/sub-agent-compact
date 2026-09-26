@@ -8,9 +8,9 @@
   "plugins": [
     {
       "name": "sub-agent-compact",
-      "source": "./",
+      "source": "./plugins/sub-agent-compact",
       "description": "Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "license": "MIT",
       "keywords": [
         "claude-code",

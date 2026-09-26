@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { AgentPolicies, type AgentFs } from '../src/agents.ts';
-import { contextTokens, currentTokens, decide, estimateTranscript } from '../src/decide.ts';
-import { parseFrontmatter } from '../src/frontmatter.ts';
-import { DEFAULT_MAIN, DEFAULT_SUBAGENT, parseEnabled, parseSize, resolveOptions, sizeTokens } from '../src/limits.ts';
+import { AgentPolicies, type AgentFs } from '../plugins/sub-agent-compact/src/agents.ts';
+import { contextTokens, currentTokens, decide, estimateTranscript } from '../plugins/sub-agent-compact/src/decide.ts';
+import { parseFrontmatter } from '../plugins/sub-agent-compact/src/frontmatter.ts';
+import { DEFAULT_MAIN, DEFAULT_SUBAGENT, parseEnabled, parseSize, resolveOptions, sizeTokens } from '../plugins/sub-agent-compact/src/limits.ts';
 
 describe('parseSize', () => {
   it.each([

@@ -3,7 +3,7 @@
 # SUITE_CHECKS_DUMP=<dir>: every ratchet also writes its current signatures to <dir>/<baseline name>, the one way a baseline is regenerated
 set -u; export LC_ALL=C
 MODE=${1:-plain}; case $MODE in plain|--close) ;; *) echo "usage: $0 [--close]" >&2; exit 2;; esac
-S=docs/design/sub-agent-compact-integration-suite; MAIN=main; LNG=ts; SRC='^(src|hooks)/.*\.ts$'; OWN_IDS='rezzminator/sub-agent-compact|sub-agent-compact#[0-9]'
+S=docs/design/sub-agent-compact-integration-suite; MAIN=main; LNG=ts; SRC='^plugins/sub-agent-compact/(src|hooks)/.*\.ts$'; OWN_IDS='rezzminator/sub-agent-compact|sub-agent-compact#[0-9]'
 DOC="$S/design.md"; K=scripts/suite-checks; rc=0; TAB=$(printf '\t')
 say() { printf 'CHECK %s %s %s\n' "$1" "$2" "$3"; case $2 in FAIL) [ "$rc" -ge 1 ] || rc=1;; ERROR) rc=2;; esac; }
 cd "$(git rev-parse --show-toplevel 2>/dev/null)" || { say setup ERROR "not inside a repository"; exit 2; }
@@ -38,7 +38,7 @@ none_gate() { { at "$DOC" | marked "$2"; } && marked "$2" < "$DOC" || return 1
   if eval "$3"; then say "$1" ERROR "NONE-AMBIGUOUS: $2 marked none, an artifact exists"; else say "$1" PASS "none:$2"; fi; }
 
 # ---- adaptation: sub-agent-compact ----
-LAND="$S/landscape.md"; BEATS="$S/beats.md"; MAP="$S/map.tsv"; PEND="$S/pending.txt"; RUNS="$S/runs"; HOOK=hooks/sub-agent-compact.ts
+LAND="$S/landscape.md"; BEATS="$S/beats.md"; MAP="$S/map.tsv"; PEND="$S/pending.txt"; RUNS="$S/runs"; HOOK=plugins/sub-agent-compact/hooks/sub-agent-compact.ts
 TODAY=$(date +%Y-%m-%d); NOW=$(date +%s)
 SHAPES="fail-open-verdict weak-oracle tautological-oracle unscoped-read wall-clock-wait consuming-probe toolchain-as-product shipped-migration-content lint-as-test tombstone self-skip double-in-production test-cited-by-production second-logging-path line-anchored-exemption machine-in-a-fixture"
 sval() { awk -v k="$1" 'index($0, k ": ") == 1 {print substr($0, length(k) + 3); f = 1; exit} END {if (!f) exit 1}' "$DOC"; }
@@ -164,7 +164,7 @@ shape_files() { case $1 in
   unscoped-read) for t in $(sval store-sharing-tiers); do case $t in unit) scoped | grep -E '^tests/(unit|contracts)/';; hermetic) scoped | grep -E '^tests/hermetic/';; live) scoped | grep -E '^tests/live/.*\.ts$';; esac; done;;
   consuming-probe) scoped | grep -E '^(tests/live/.*\.ts|scripts/dev\.sh)$';;
   double-in-production) scoped | grep -E '^(src|hooks|tests)/.*\.ts$' | grep -v "^$(sval fakes-directory)/";;
-  test-cited-by-production) scoped | grep -E '^(src/.*\.ts|hooks/.*|\.claude-plugin/.*)$';;
+  test-cited-by-production) scoped | grep -E '^(plugins/sub-agent-compact/.*|\.claude-plugin/.*)$';;
   second-logging-path) scoped | grep -E "$SRC";;
   machine-in-a-fixture) scoped | grep -E "^($(sval synthetic-log-fixture-directory)|$(sval goldens-directory)|tests/live/fixtures|tests/hermetic/scenarios)/";;
   *) scoped | grep -E '^tests/.*\.ts$';;
@@ -246,7 +246,7 @@ chk_retired() { oblige "$K/assertions.$LNG" > "$T/as" && [ -s "$T/as" ] || { say
 
 leg() { for l in $(led); do grep -qx "mode: $1" "$l" && printf '%s %s\n' "$(git log -1 --format=%ct -- "$l" 2>/dev/null)" "$l"; done | sort -n | tail -n 1; }
 chk_env_twice() { { scoped | grep -E "$SRC" | xargs grep -ohE "env\\.get\\('[A-Z_]+'\\)" | sed -E "s/.*\\('//; s/'\\)//"
-    node -e 'for (const k of Object.keys(require("./.claude-plugin/plugin.json").userConfig || {})) console.log(k)'; } 2>/dev/null | sort -u > "$T/keys"
+    node -e 'for (const k of Object.keys(require("./plugins/sub-agent-compact/.claude-plugin/plugin.json").userConfig || {})) console.log(k)'; } 2>/dev/null | sort -u > "$T/keys"
   [ -s "$T/keys" ] || { say env-twice ERROR "key set unreadable"; return; }
   tp=$(sval double-run-trigger-paths) && [ -n "$tp" ] || { say env-twice ERROR "trigger paths unreadable"; return; }
   w=$(value schedule-window-days) || { say env-twice ERROR "schedule window undeclared"; return; }
