@@ -5,7 +5,7 @@
 **Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.**
 
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
-[![Version](https://img.shields.io/badge/version-0.2.3-blue)](https://github.com/rezzminator/sub-agent-compact/commits/main)
+[![Version](https://img.shields.io/badge/version-0.2.3-blue)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)](#development)
 
@@ -286,6 +286,8 @@ npm test              # unit tests for plugins/sub-agent-compact/src/
 npm run typecheck
 npm run validate:plugin
 ```
+
+Work lands on `develop`; `main` holds only releases, and each one is tagged `sub-agent-compact--vX.Y.Z` with its notes in [CHANGELOG.md](./CHANGELOG.md). Pull requests go to `develop`.
 
 `plugins/sub-agent-compact/hooks/sub-agent-compact.ts` is a thin adapter over `plugins/sub-agent-compact/src/`:
 
