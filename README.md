@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)](#development)
 
-**34% cheaper** than a sub-agent that never compacts · **42% faster** than a fixed auto-compact threshold at the same cost
+**34% cheaper** than a sub-agent that never compacts · **52% less context** re-sent on every request
 
 </div>
 
@@ -55,25 +55,20 @@ the model decide *when* to compact.
 The job: one Sonnet 5 sub-agent renames an identifier across **24 Go files**,
 Edit only, about **500 model requests**, with the same brief in every run.
 
-| | No compaction | Fixed 100k threshold | **sub-agent-compact** |
-|---|---:|---:|---:|
-| **Cost** | $18.39 | $12.25 | **$12.20** |
-| Cost per request | $0.036 | $0.020 | $0.024 |
-| Mean context per request | 161k | 61k | 77k |
-| Executor time | 29 min | 81 min | 47 min |
-| Compactions | 0 | 6, forced mid-work | 4, each at a milestone the model chose |
-| Files re-read after compaction | none | 139 | 117 |
-| Files exactly right | 24/24 | 24/24 | 23/24 |
+| | No compaction | **sub-agent-compact** |
+|---|---:|---:|
+| **Cost** | $18.39 | **$12.20** |
+| Cost per request | $0.036 | $0.024 |
+| Mean context per request | 161k | 77k |
+| Executor time | 29 min | 47 min |
+| Compactions | 0 | 4, each at a milestone the model chose |
+| Files exactly right | 24/24 | 23/24 |
 
 **Where the saving comes from.** Every tool call re-sends the whole
 context, so a sub-agent that never compacts pays for its whole history again
 on each request. Self-compaction halved the mean context. That cut cache
 reads from $16.32 to $7.59, a saving of $8.73, of which compaction gave back
 $2.56 in re-caching, extra output and summaries.
-
-**Versus a fixed threshold.** It costs the same and finishes in 42% less
-time. It compacts less often, re-reads fewer files, and never cuts an agent
-off in the middle of an edit.
 
 The run also exposed a bug, since fixed: a stale reading right after one
 compaction used up a nudge, and that stretch ran to 205k before the next one.
