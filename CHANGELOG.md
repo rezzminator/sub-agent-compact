@@ -4,6 +4,8 @@ Every release of sub-agent-compact. Versions follow [semantic versioning](https:
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-09-27
+
 ### Changed
 - A sub-agent is first nudged at 20% of its window, up from 10% (`subagentAutoCompactNudgeStart`).
 - Every nudge tells a party on its last job (one task or its final answer left) to finish it first and not compact.
@@ -46,7 +48,8 @@ Every release of sub-agent-compact. Versions follow [semantic versioning](https:
 ### Added
 - Separate auto-compact points for the main chat and each sub-agent type, through Claude Code function hooks.
 
-[Unreleased]: https://github.com/rezzminator/sub-agent-compact/compare/sub-agent-compact--v0.2.3...develop
+[Unreleased]: https://github.com/rezzminator/sub-agent-compact/compare/sub-agent-compact--v0.2.4...develop
+[0.2.4]: https://github.com/rezzminator/sub-agent-compact/compare/sub-agent-compact--v0.2.3...sub-agent-compact--v0.2.4
 [0.2.3]: https://github.com/rezzminator/sub-agent-compact/compare/sub-agent-compact--v0.2.2...sub-agent-compact--v0.2.3
 [0.2.2]: https://github.com/rezzminator/sub-agent-compact/compare/sub-agent-compact--v0.2.1...sub-agent-compact--v0.2.2
 [0.2.1]: https://github.com/rezzminator/sub-agent-compact/compare/sub-agent-compact--v0.2.0...sub-agent-compact--v0.2.1
