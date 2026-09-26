@@ -21,7 +21,7 @@ jobs:
           v="${GITHUB_REF_NAME#sub-agent-compact--v}"
           test "$v" = "$(node -p 'require("./plugins/sub-agent-compact/.claude-plugin/plugin.json").version')"
           scripts/release-check.sh
-          awk -v v="$v" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > notes.md
+          awk -v v="$v" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ || /^\[/ {f=0} f' CHANGELOG.md > notes.md
           test -s notes.md
       - run: gh release create "$GITHUB_REF_NAME" --title "sub-agent-compact ${GITHUB_REF_NAME#sub-agent-compact--v}" --notes-file notes.md --verify-tag
         env:
