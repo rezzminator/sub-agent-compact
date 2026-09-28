@@ -360,6 +360,8 @@ export const register: Register = (on: On, options: PluginOptions) => {
       if (compactionEnd({ trigger: e.trigger, skipped: false, aborted: true }) === 'unfinished') dropArm('interrupt');
     };
     next.signal.addEventListener('abort', onAbort, { once: true });
+    // An interrupt that landed before this hook reached the compaction fires no event; read it now.
+    if (next.signal.aborted) onAbort();
     let outcome: Awaited<ReturnType<typeof next>>;
     try {
       outcome = await next(input);
