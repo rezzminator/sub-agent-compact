@@ -33,4 +33,21 @@ describe('Parties', () => {
     parties.compacted('a', undefined);
     expect(parties.reading('a')).toBe(0);
   });
+
+  it('disarms a party without a compaction, keeping the nudges already sent so none repeats at once', () => {
+    const parties = new Parties();
+    parties.read('main', 301_000);
+    expect(parties.nudgeDue('main', 200_000, 100_000)).toBe(1);
+    parties.arm('main', 'next: dry run');
+    expect(parties.disarm('main')).toBe(true);
+    expect(parties.armed('main')).toBeUndefined();
+    expect(parties.reading('main')).toBe(301_000);
+    expect(parties.nudgeDue('main', 200_000, 100_000)).toBeUndefined();
+    parties.read('main', 401_000);
+    expect(parties.nudgeDue('main', 200_000, 100_000)).toBe(2);
+  });
+
+  it('reports nothing to disarm for a party that never armed', () => {
+    expect(new Parties().disarm('main')).toBe(false);
+  });
 });

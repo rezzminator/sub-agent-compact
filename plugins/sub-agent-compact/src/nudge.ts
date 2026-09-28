@@ -66,6 +66,7 @@ export function nudgeText({ tokens, window, level, autoCompact, main, toolName }
     : `call ${toolName} with a focus if you have that tool; otherwise write <compact-now>your focus</compact-now> in a response that also makes your next tool call, never alone, because a response without a tool call ends your run`;
   return [
     `sub-agent-compact: your context is ${k(tokens)} tokens (${Math.round((tokens / window) * 100)}% of your ${k(window)} window).`,
+    ...(main ? ['The person steers this chat: when they are waiting on an answer or asked you not to compact, finish their ask first and never compact while they wait.'] : []),
     'If you are on your last job (one task or your final answer left), finish it first and do not compact.',
     level > 0 ? `Nudge ${level + 1}: with more work still ahead, compact at your very next milestone.` : 'With more work still ahead, wrap up the step in hand and get ready to compact.',
     'At a clean milestone, write anything you must not lose to a file, then compact yourself:',
@@ -82,4 +83,9 @@ export function armedText({ main, tokens, askPoint }: { main: boolean; tokens: n
   if (main) return `${lead} It runs when this turn ends; carry on or end the turn.`;
   if (askPoint === undefined) return `${lead} It runs when Claude Code next asks to compact you, near your window; carry on.`;
   return `${lead} It runs once your context reaches ${k(askPoint)}, where Claude Code starts asking; below that a compaction costs more than it saves. Carry on.`;
+}
+
+/** What the model reads beside the person's prompt that cancelled the compaction it armed. */
+export function disarmedText(): string {
+  return 'sub-agent-compact: the person\'s message cancelled the compaction you armed; it will not run. Answer them, and do not ask to compact again until their ask is done.';
 }

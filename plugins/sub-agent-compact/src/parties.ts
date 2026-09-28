@@ -27,6 +27,15 @@ export class Parties {
     this.focuses.set(key, focus);
   }
 
+  /**
+   * Drops an armed focus without a compaction: the person cancelled it, or the
+   * compaction it armed did not finish. The nudges already sent stay sent, so
+   * none repeats at once. True when a focus was armed.
+   */
+  disarm(key: string): boolean {
+    return this.focuses.delete(key);
+  }
+
   continued(key: string): boolean {
     return this.refused.has(key);
   }

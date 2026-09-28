@@ -15,20 +15,24 @@ export type DecideInput = {
   enabled?: boolean;
   /** The focus the party's model gave when it asked to compact itself; absent when it has not asked. */
   armed?: string;
+  /** True for an engine loop missing from `$.agent.list()`: no policy governs it. */
+  unlisted?: boolean;
 };
 
 export type Decision =
-  | { action: 'pass'; why: 'requested' | 'self' | 'at-limit' | 'no-reading' }
+  | { action: 'pass'; why: 'requested' | 'self' | 'at-limit' | 'no-reading' | 'unlisted' }
   | { action: 'skip'; reason: string };
 
 /**
  * One compaction request: a person's or plugin's always passes, and so does an
  * automatic one once the party's model asked to compact itself. Otherwise an
  * automatic one is held for a party with automatic compaction off, and while
- * the party is below its limit. No reading never holds an enabled party.
+ * the party is below its limit. No reading never holds an enabled party, and
+ * an engine loop the session does not list (a fork of its own) is never held.
  */
-export function decide({ trigger, label, limit, tokens, enabled = true, armed }: DecideInput): Decision {
+export function decide({ trigger, label, limit, tokens, enabled = true, armed, unlisted = false }: DecideInput): Decision {
   if (trigger === 'manual' || trigger === 'plugin') return { action: 'pass', why: 'requested' };
+  if (unlisted) return { action: 'pass', why: 'unlisted' };
   if (armed !== undefined) return { action: 'pass', why: 'self' };
   if (!enabled) return { action: 'skip', reason: `${label}: auto-compact off` };
   if (tokens === undefined || !Number.isFinite(tokens)) return { action: 'pass', why: 'no-reading' };
@@ -86,4 +90,28 @@ export function estimateTranscript(messages: readonly TranscriptMessage[]): numb
 export function currentTokens(lastResponse: number | undefined, messages: readonly TranscriptMessage[]): number | undefined {
   if (lastResponse === undefined) return undefined;
   return Math.max(lastResponse, estimateTranscript(messages));
+}
+
+/** A prompt origin that is the person: at the terminal, over Remote Control, or the SDK host's own turn. */
+const PERSON_ORIGINS = new Set(['composer', 'bridge', 'sdk']);
+
+/**
+ * Whether a submitted prompt comes from the person driving the session, whose
+ * message cancels a self-compaction the model armed. A notification, a peer,
+ * a schedule, a plugin or a channel the engine cannot attest never cancels it.
+ */
+export function personPrompt(origin: { kind: string } | undefined): boolean {
+  return origin !== undefined && PERSON_ORIGINS.has(origin.kind);
+}
+
+/**
+ * How a compaction the plugin let through ended: `compacted` once it ran;
+ * `unfinished` when it was skipped beneath, interrupted or failed, so the
+ * focus armed for it is dropped rather than firing on the next request;
+ * `precompute` for a precompute, which installs nothing and leaves the arm for
+ * the compaction it prepares.
+ */
+export function compactionEnd({ trigger, skipped, aborted }: { trigger: Trigger; skipped: boolean; aborted: boolean }): 'compacted' | 'unfinished' | 'precompute' {
+  if (trigger === 'precompute') return 'precompute';
+  return skipped || aborted ? 'unfinished' : 'compacted';
 }

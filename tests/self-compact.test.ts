@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { armedText, compactMarker, markerRequest, nudgeLevel, nudgeText, stopRequest } from '../plugins/sub-agent-compact/src/nudge.ts';
+import { armedText, compactMarker, disarmedText, markerRequest, nudgeLevel, nudgeText, stopRequest } from '../plugins/sub-agent-compact/src/nudge.ts';
 import { ENGINE_COMPACT_BUFFER, engineAskPoint, isHaiku, modelWindow } from '../plugins/sub-agent-compact/src/window.ts';
 
 describe('modelWindow', () => {
@@ -117,6 +117,16 @@ describe('nudgeText', () => {
     expect(text).toContain('Nudge 2');
     expect(text).toContain('never alone');
   });
+
+  it('tells the main chat that a person waiting on it comes before compacting, and a sub-agent nothing of the kind', () => {
+    for (const level of [0, 2]) {
+      const text = nudgeText({ ...base, level, main: true });
+      expect(text).toMatch(/person/);
+      expect(text).toMatch(/never compact while they wait/);
+      expect(text.indexOf('person')).toBeLessThan(text.indexOf('compact yourself'));
+    }
+    expect(nudgeText({ ...base, level: 0, main: false })).not.toMatch(/person/);
+  });
 });
 
 describe('armedText', () => {
@@ -126,5 +136,13 @@ describe('armedText', () => {
     expect(armedText({ main: false, tokens: 90_000, askPoint: 67_000 })).toMatch(/before your next model request/);
     expect(armedText({ main: false, tokens: 40_000, askPoint: 67_000 })).toMatch(/once your context reaches 67k/);
     expect(armedText({ main: false, tokens: 40_000, askPoint: undefined })).toMatch(/when Claude Code next asks/);
+  });
+});
+
+describe('disarmedText', () => {
+  it('tells the model the person cancelled its compaction and not to arm again before their ask is done', () => {
+    const text = disarmedText();
+    expect(text).toMatch(/cancelled/);
+    expect(text).toMatch(/do not ask to compact again/);
   });
 });
