@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AgentPolicies, type AgentFs } from '../plugins/sub-agent-compact/src/agents.ts';
-import { contextTokens, currentTokens, decide, estimateTranscript } from '../plugins/sub-agent-compact/src/decide.ts';
+import { compactionEnd, contextTokens, currentTokens, decide, estimateTranscript, personPrompt } from '../plugins/sub-agent-compact/src/decide.ts';
 import { parseFrontmatter } from '../plugins/sub-agent-compact/src/frontmatter.ts';
 import { DEFAULT_MAIN, DEFAULT_SUBAGENT, parseEnabled, parseSize, resolveOptions, sizeTokens } from '../plugins/sub-agent-compact/src/limits.ts';
 
@@ -262,5 +262,40 @@ describe('currentTokens', () => {
   it('keeps the usage when it is the larger, undefined without one', () => {
     expect(currentTokens(90_000, transcript)).toBe(90_000);
     expect(currentTokens(undefined, transcript)).toBeUndefined();
+  });
+});
+
+describe('decide for a loop the session does not list', () => {
+  it('passes an engine loop missing from $.agent.list(), since no policy governs it', () => {
+    expect(decide({ trigger: 'auto', label: 'unlisted', limit: 600_000, tokens: 70_000, unlisted: true })).toEqual({ action: 'pass', why: 'unlisted' });
+  });
+});
+
+describe('personPrompt', () => {
+  it('counts the person at the terminal, over Remote Control, or through the SDK', () => {
+    for (const kind of ['composer', 'bridge', 'sdk']) expect(personPrompt({ kind })).toBe(true);
+  });
+
+  it('never counts a notification, a peer, a schedule, a plugin or an unattested channel', () => {
+    for (const kind of ['task-notification', 'scheduled-trigger', 'peer', 'peer-send-message', 'coordinator', 'auto-continuation', 'unclassified']) {
+      expect(personPrompt({ kind })).toBe(false);
+    }
+    expect(personPrompt(undefined)).toBe(false);
+  });
+});
+
+describe('compactionEnd', () => {
+  it('reads a compaction that ran as compacted', () => {
+    expect(compactionEnd({ trigger: 'auto', skipped: false, aborted: false })).toBe('compacted');
+  });
+
+  it('reads a skipped, interrupted or failed one as unfinished, so an armed focus is dropped', () => {
+    expect(compactionEnd({ trigger: 'auto', skipped: true, aborted: false })).toBe('unfinished');
+    expect(compactionEnd({ trigger: 'plugin', skipped: false, aborted: true })).toBe('unfinished');
+  });
+
+  it('leaves a precompute alone: it installs nothing, and the compaction it prepares is still to come', () => {
+    expect(compactionEnd({ trigger: 'precompute', skipped: false, aborted: false })).toBe('precompute');
+    expect(compactionEnd({ trigger: 'precompute', skipped: true, aborted: true })).toBe('precompute');
   });
 });

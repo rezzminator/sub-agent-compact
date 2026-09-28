@@ -1,9 +1,9 @@
 import type { EngineInterface, On, PluginOptions, Register } from 'claude-code';
 import { AgentPolicies } from '../src/agents.ts';
-import { contextTokens, currentTokens, decide } from '../src/decide.ts';
+import { compactionEnd, contextTokens, currentTokens, decide, personPrompt } from '../src/decide.ts';
 import { resolveOptions, sizeTokens, type Policy, type ResolvedOptions } from '../src/limits.ts';
 import { appendRows, sessionLogPath } from '../src/log.ts';
-import { armedText, CONTINUE_AFTER_MARKER, markerRequest, nudgeText, stopRequest } from '../src/nudge.ts';
+import { armedText, CONTINUE_AFTER_MARKER, disarmedText, markerRequest, nudgeText, stopRequest } from '../src/nudge.ts';
 import { Parties } from '../src/parties.ts';
 import { engineAskPoint, isHaiku, modelWindow } from '../src/window.ts';
 
@@ -127,11 +127,12 @@ function start(st: State, $: EngineInterface): Promise<void> {
   return st.started;
 }
 
-async function agentType(st: State, $: EngineInterface, agentId: string): Promise<string> {
+/** The agent's type; undefined for an engine loop (a fork of its own) that `$.agent.list()` does not list. */
+async function agentType(st: State, $: EngineInterface, agentId: string): Promise<string | undefined> {
   const known = st.typeById.get(agentId);
   if (known) return known;
   const agent = (await $.agent.list()).find((info) => info.id === agentId);
-  if (!agent) throw new Error(`agent ${agentId} is not in $.agent.list()`);
+  if (!agent) return undefined;
   st.typeById.set(agentId, agent.type);
   return agent.type;
 }
@@ -148,6 +149,8 @@ type Party = {
   window: number;
   /** Haiku runs on Claude Code's own compaction point: no nudges, no self-compaction. */
   haiku: boolean;
+  /** An engine loop missing from `$.agent.list()`: no policy governs it, so it is never nudged, armed or held. */
+  unlisted: boolean;
 };
 
 async function partyOf(st: State, $: EngineInterface, agentId: string | undefined): Promise<Party> {
@@ -155,11 +158,12 @@ async function partyOf(st: State, $: EngineInterface, agentId: string | undefine
   const key = agentId ?? 'main';
   const model = st.models.get(key);
   const window = modelWindow(model, st.mainWindow ?? FALLBACK_WINDOW);
-  if (!agentId) return { key, label: 'main', main: true, policy: st.config.main, source: 'mainAutoCompact', window, haiku: isHaiku(model) };
+  if (!agentId) return { key, label: 'main', main: true, policy: st.config.main, source: 'mainAutoCompact', window, haiku: isHaiku(model), unlisted: false };
   const label = await agentType(st, $, agentId);
+  if (label === undefined) return { key, label: 'unlisted', main: false, policy: st.config.subagent, source: 'unlisted', window, haiku: isHaiku(model), unlisted: true };
   const resolved = await st.policies!.resolve(label);
   const source = resolved.source === 'default' ? 'subagentAutoCompact' : resolved.source;
-  return { key, label, main: false, policy: resolved.policy, source, window, haiku: isHaiku(model) };
+  return { key, label, main: false, policy: resolved.policy, source, window, haiku: isHaiku(model), unlisted: false };
 }
 
 /** The forced point in tokens; Haiku's is Claude Code's own ask point for its window. */
@@ -173,8 +177,8 @@ function askPointOf(st: State): number | undefined {
 
 /** Records the party's own request to compact; refused for Haiku. */
 function arm(st: State, $: EngineInterface, party: Party, focus: string, via: 'tool' | 'marker' | 'stop'): boolean {
-  if (party.haiku) {
-    record(st, $, { event: 'arm-refused', via, party: party.key, type: party.label, why: 'haiku' });
+  if (party.haiku || party.unlisted) {
+    record(st, $, { event: 'arm-refused', via, party: party.key, type: party.label, why: party.haiku ? 'haiku' : 'unlisted' });
     return false;
   }
   st.parties.arm(party.key, focus);
@@ -185,7 +189,7 @@ function arm(st: State, $: EngineInterface, party: Party, focus: string, via: 't
 /** The nudge line owed after this tool call, once the party's context passed a nudge point it was not yet told about. */
 async function nudgeFor(st: State, $: EngineInterface, agentId: string | undefined): Promise<string | undefined> {
   const party = await partyOf(st, $, agentId);
-  if (party.haiku || !party.policy.enabled) return undefined;
+  if (party.haiku || party.unlisted || !party.policy.enabled) return undefined;
   const nudgeStart = sizeTokens(party.policy.nudgeStart, party.window);
   const nudgeEvery = sizeTokens(party.policy.nudgeEvery, party.window);
   const level = st.parties.nudgeDue(party.key, nudgeStart, nudgeEvery);
@@ -241,6 +245,19 @@ export const register: Register = (on: On, options: PluginOptions) => {
     const result = await next(e);
     await registerCompactTool(st, $);
     return result;
+  });
+
+  // The person's own message cancels a self-compaction the main chat's model armed; the model is told so.
+  on('prompt.submit', async ($, e, next) => {
+    try {
+      if (personPrompt(e.origin) && st.parties.disarm('main')) {
+        record(st, $, { event: 'disarmed', party: 'main', via: 'prompt', origin: e.origin.kind });
+        return next({ ...e, context: [...(e.context ?? []), disarmedText()] });
+      }
+    } catch (error) {
+      $.ui.log(`sub-agent-compact: reading the prompt's origin failed: ${message(error)}`);
+    }
+    return next(e);
   });
 
   // Track each loop's context and model from its responses, and read a sub-agent's <compact-now> request in its text.
@@ -315,11 +332,11 @@ export const register: Register = (on: On, options: PluginOptions) => {
     }
     const limit = limitOf(party);
     const askPoint = askPointOf(st);
-    if (!party.main && !party.haiku && askPoint !== undefined && limit < askPoint) {
+    if (!party.main && !party.haiku && !party.unlisted && askPoint !== undefined && limit < askPoint) {
       warnOnce(st, $, `below-window:${party.label}`, `sub-agent-compact: ${party.label} limit ${limit} is below Claude Code's ask point ${askPoint} (CLAUDE_CODE_AUTO_COMPACT_WINDOW ${st.compactWindow}); it compacts at ${askPoint} — lower the window to hold this limit`);
     }
-    const armed = party.haiku ? undefined : st.parties.armed(key);
-    const decision = decide({ trigger: e.trigger, label: party.label, limit, tokens, enabled: party.haiku || party.policy.enabled, armed });
+    const armed = party.haiku || party.unlisted ? undefined : st.parties.armed(key);
+    const decision = decide({ trigger: e.trigger, label: party.label, limit, tokens, enabled: party.haiku || party.policy.enabled, armed, unlisted: party.unlisted });
     record(st, $, { ...base, type: party.label, limit, source: party.haiku ? 'haiku' : party.source, tokens: tokens ?? null, lastResponseTokens: st.parties.reading(key) ?? null, messages: e.messages.length, decision: decision.action, ...(decision.action === 'pass' ? { why: decision.why } : {}) });
     if (decision.action === 'skip') {
       if (e.trigger === 'auto') st.asked.add(key);
@@ -329,14 +346,35 @@ export const register: Register = (on: On, options: PluginOptions) => {
     const firstAsk = !st.asked.has(key);
     if (e.trigger === 'auto') st.asked.add(key);
     // With the window known, a first ask past the limit is one step's growth, not a window set too high.
-    if (e.trigger === 'auto' && firstAsk && st.compactWindow === undefined && tokens !== undefined && tokens > limit * 1.1) {
+    if (e.trigger === 'auto' && firstAsk && !party.unlisted && st.compactWindow === undefined && tokens !== undefined && tokens > limit * 1.1) {
       warnOnce(st, $, `late:${party.label}`, `sub-agent-compact: ${party.label} was first asked to compact at ${tokens}, past its limit ${limit}; CLAUDE_CODE_AUTO_COMPACT_WINDOW is unset, so Claude Code's native window is likely above this limit — set it to your smallest sub-agent limit`);
     }
     if (!agentId) st.mainCompactedThisTurn = true;
     // A self-compaction's focus becomes what the summarizer is told; a person's or plugin's instructions come first.
     const input = decision.why === 'self' && armed !== undefined ? { ...e, instructions: e.instructions ? `${e.instructions}\n\n${armed}` : armed } : e;
-    const outcome = await next(input);
-    if (outcome.skip === undefined && e.trigger !== 'precompute') st.parties.compacted(key, outcome.tokensAfter);
+    // A compaction armed by the model that does not finish drops its focus: the person's interrupt, a skip beneath or a failure never leaves it to fire on the next request.
+    const dropArm = (why: string): void => {
+      if (armed !== undefined && st.parties.disarm(key)) record(st, $, { event: 'disarmed', party: key, via: why, trigger: e.trigger });
+    };
+    const onAbort = (): void => {
+      if (compactionEnd({ trigger: e.trigger, skipped: false, aborted: true }) === 'unfinished') dropArm('interrupt');
+    };
+    next.signal.addEventListener('abort', onAbort, { once: true });
+    // An interrupt that landed before this hook reached the compaction fires no event; read it now.
+    if (next.signal.aborted) onAbort();
+    let outcome: Awaited<ReturnType<typeof next>>;
+    try {
+      outcome = await next(input);
+    } catch (error) {
+      if (compactionEnd({ trigger: e.trigger, skipped: false, aborted: true }) === 'unfinished') dropArm('error');
+      throw error;
+    } finally {
+      next.signal.removeEventListener('abort', onAbort);
+    }
+    // An outcome that came back is judged by its skip alone: a compaction that returned its messages ran.
+    const end = compactionEnd({ trigger: e.trigger, skipped: outcome.skip !== undefined, aborted: false });
+    if (end === 'compacted' && outcome.skip === undefined) st.parties.compacted(key, outcome.tokensAfter);
+    else if (end === 'unfinished') dropArm('skipped');
     return outcome;
   });
 

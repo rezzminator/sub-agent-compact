@@ -9,7 +9,10 @@
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "claude-code": ["./types/claude-code.d.ts"]
+    }
   },
   "include": ["plugins/sub-agent-compact/src", "tests"]
 }

@@ -5,9 +5,9 @@
 **Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.**
 
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
-[![Version](https://img.shields.io/badge/version-0.2.4-blue)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.5-blue)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen)](#development)
 [![Built with Professor](https://img.shields.io/badge/built%20with-Professor-8A2BE2)](https://github.com/rezzminator/professor)
 
 **34% cheaper** than a sub-agent that never compacts · **52% less context** re-sent on every request
@@ -131,6 +131,17 @@ Guards keep this honest:
 - A sub-agent that sends the marker alone would end its own run, because a
   response without a tool call is its final answer. The plugin refuses that
   stop once, and the agent carries on and compacts.
+- You can always call a self-compaction off. A message you send cancels a
+  compaction the main chat armed, and the model is told not to ask again
+  until your ask is done. An interrupt (Esc or Ctrl+C) during an armed
+  compaction, or a compaction that is skipped or fails, also drops the
+  request, so it never fires on the next request instead. A notification
+  or a message from another chat cancels nothing.
+- The main chat's nudges tell its model that a person waiting on an answer
+  comes first: it never compacts while you wait.
+- An engine loop that is not one of the session's sub-agents (a fork
+  Claude Code runs itself) is left to Claude Code's own point: never nudged,
+  armed or held.
 - A lookup that fails is logged, and the compaction goes through. The
   plugin never holds a compaction because of its own error.
 
