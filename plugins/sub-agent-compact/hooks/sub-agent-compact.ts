@@ -3,7 +3,7 @@ import { AgentPolicies, AgentTypes } from '../src/agents.ts';
 import { compactionEnd, contextTokens, currentTokens, decide, personPrompt } from '../src/decide.ts';
 import { resolveOptions, sizeTokens, type Policy, type ResolvedOptions } from '../src/limits.ts';
 import { appendRows, sessionLogPath } from '../src/log.ts';
-import { armedText, CONTINUE_AFTER_MARKER, disarmedText, markerRequest, nudgeText, stopRequest } from '../src/nudge.ts';
+import { armedText, CONTINUE_AFTER_MARKER, disarmedText, earlyArm, markerRequest, nudgeText, stopRequest } from '../src/nudge.ts';
 import { Parties } from '../src/parties.ts';
 import { engineAskPoint, isHaiku, modelWindow } from '../src/window.ts';
 
@@ -171,15 +171,21 @@ function askPointOf(st: State): number | undefined {
   return st.compactWindow === undefined ? undefined : engineAskPoint(st.compactWindow);
 }
 
-/** Records the party's own request to compact; refused for Haiku. */
-function arm(st: State, $: EngineInterface, party: Party, focus: string, via: 'tool' | 'marker' | 'stop'): boolean {
+/** Records the party's own request to compact; returns why it was refused (Haiku, unlisted, below its first nudge point), or undefined once armed. */
+function arm(st: State, $: EngineInterface, party: Party, focus: string, via: 'tool' | 'marker' | 'stop'): string | undefined {
+  const tokens = st.parties.reading(party.key);
   if (party.haiku || party.unlisted) {
     record(st, $, { event: 'arm-refused', via, party: party.key, type: party.label, why: party.haiku ? 'haiku' : 'unlisted' });
-    return false;
+    return 'Not armed: self-compaction is off for Haiku agents; Claude Code compacts them at its own point.';
+  }
+  const early = earlyArm({ tokens, nudgeStart: sizeTokens(party.policy.nudgeStart, party.window) });
+  if (early !== undefined) {
+    record(st, $, { event: 'arm-refused', via, party: party.key, type: party.label, why: 'early', tokens: tokens ?? null });
+    return early;
   }
   st.parties.arm(party.key, focus);
-  record(st, $, { event: 'armed', via, party: party.key, type: party.label, tokens: st.parties.reading(party.key) ?? null, focus });
-  return true;
+  record(st, $, { event: 'armed', via, party: party.key, type: party.label, tokens: tokens ?? null, focus });
+  return undefined;
 }
 
 /** The nudge line owed after this tool call, once the party's context passed a nudge point it was not yet told about. */
@@ -201,7 +207,7 @@ async function registerCompactTool(st: State, $: EngineInterface): Promise<void>
     const { tool } = await $.tool.register({
       name: COMPACT_TOOL,
       description:
-        'Compact your own context now, at a milestone you choose. The summary keeps what `focus` names, so name the plan or its file, what is done, what is left and the next step. Write anything you must not lose to a file first. Use it when sub-agent-compact nudges you, or after finishing a unit of work while your context is large.',
+        'Compact your own context now, at a milestone you choose. The summary keeps what `focus` names, so name the plan or its file, what is done, what is left and the next step. Write anything you must not lose to a file first. Use it only once sub-agent-compact has nudged you; below that point it is refused.',
       inputSchema: {
         type: 'object',
         properties: { focus: { type: 'string', description: 'What the summary must keep: the plan or its file, what is done, what is left, the next step.' } },
@@ -219,7 +225,8 @@ async function registerCompactTool(st: State, $: EngineInterface): Promise<void>
 async function answerCompactTool(st: State, $: EngineInterface, agentId: string | undefined, focus: unknown): Promise<string> {
   if (typeof focus !== 'string' || focus.trim() === '') return 'Not armed: `focus` must name what the summary keeps (the plan or its file, what is done, what is left, the next step).';
   const party = await partyOf(st, $, agentId);
-  if (!arm(st, $, party, focus.trim(), 'tool')) return 'Not armed: self-compaction is off for Haiku agents; Claude Code compacts them at its own point.';
+  const refused = arm(st, $, party, focus.trim(), 'tool');
+  if (refused !== undefined) return refused;
   return armedText({ main: party.main, tokens: st.parties.reading(party.key), askPoint: askPointOf(st) });
 }
 
@@ -306,7 +313,7 @@ export const register: Register = (on: On, options: PluginOptions) => {
       const focus = stopRequest({ lastMessage: e.last_assistant_message, continued: st.parties.continued(e.agent_id) });
       if (focus !== undefined) {
         const party = await partyOf(st, $, e.agent_id);
-        if (arm(st, $, party, focus, 'stop')) {
+        if (arm(st, $, party, focus, 'stop') === undefined) {
           st.parties.markContinued(e.agent_id);
           record(st, $, { event: 'stop-refused', party: e.agent_id, type: party.label });
           return { block: CONTINUE_AFTER_MARKER };

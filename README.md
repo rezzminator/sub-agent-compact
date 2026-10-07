@@ -131,6 +131,10 @@ Guards keep this honest:
 - A sub-agent that sends the marker alone would end its own run, because a
   response without a tool call is its final answer. The plugin refuses that
   stop once, and the agent carries on and compacts.
+- A self-compaction is refused below the party's first nudge point
+  (`mainAutoCompactNudgeStart`, `subagentAutoCompactNudgeStart`): there it
+  throws away more working context than it saves. The model is told so and
+  carries on.
 - You can always call a self-compaction off. A message you send cancels a
   compaction the main chat armed, and the model is told not to ask again
   until your ask is done. An interrupt (Esc or Ctrl+C) during an armed
@@ -256,7 +260,8 @@ $12.20.
 
 Yes, that's the self-compaction feature. The main chat calls the `compact`
 tool. A sub-agent writes `<compact-now>focus</compact-now>` alongside its
-next tool call. In both cases the focus tells the summarizer what to keep.
+next tool call. In both cases the focus tells the summarizer what to keep. It
+only arms once the context has passed the first nudge point.
 </details>
 
 <details>

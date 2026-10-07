@@ -89,3 +89,13 @@ export function armedText({ main, tokens, askPoint }: { main: boolean; tokens: n
 export function disarmedText(): string {
   return 'sub-agent-compact: the person\'s message cancelled the compaction you armed; it will not run. Answer them, and do not ask to compact again until their ask is done.';
 }
+
+/**
+ * Why a self-compaction asked for below the party's first nudge point is
+ * refused, or undefined when it may arm. Below that point a compaction throws
+ * away more working context than it saves; no reading never refuses.
+ */
+export function earlyArm({ tokens, nudgeStart }: { tokens: number | undefined; nudgeStart: number }): string | undefined {
+  if (tokens === undefined || tokens >= nudgeStart) return undefined;
+  return `Not armed: your context is ${k(tokens)}, below ${k(nudgeStart)}, the first point sub-agent-compact nudges you at. Keep working; you will be told when compacting pays.`;
+}
