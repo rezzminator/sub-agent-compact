@@ -1,5 +1,5 @@
 import type { EngineInterface, On, PluginOptions, Register } from 'claude-code';
-import { AgentPolicies } from '../src/agents.ts';
+import { AgentPolicies, AgentTypes } from '../src/agents.ts';
 import { compactionEnd, contextTokens, currentTokens, decide, personPrompt } from '../src/decide.ts';
 import { resolveOptions, sizeTokens, type Policy, type ResolvedOptions } from '../src/limits.ts';
 import { appendRows, sessionLogPath } from '../src/log.ts';
@@ -32,7 +32,8 @@ type State = {
   mainWindow?: number;
   /** The compact tool's full name once registered. */
   toolName?: string;
-  typeById: Map<string, string>;
+  /** Each sub-agent's type: announced by SubagentStart or SubagentStop, else from `$.agent.list()`. */
+  types: AgentTypes;
   /** Per party ("main" or an agent id): its model, from its last response. */
   models: Map<string, string>;
   parties: Parties;
@@ -127,14 +128,9 @@ function start(st: State, $: EngineInterface): Promise<void> {
   return st.started;
 }
 
-/** The agent's type; undefined for an engine loop (a fork of its own) that `$.agent.list()` does not list. */
+/** The agent's type; undefined for an engine loop (a fork of its own) that no hook announced and `$.agent.list()` does not list. */
 async function agentType(st: State, $: EngineInterface, agentId: string): Promise<string | undefined> {
-  const known = st.typeById.get(agentId);
-  if (known) return known;
-  const agent = (await $.agent.list()).find((info) => info.id === agentId);
-  if (!agent) return undefined;
-  st.typeById.set(agentId, agent.type);
-  return agent.type;
+  return st.types.of(agentId, () => $.agent.list());
 }
 
 type Party = {
@@ -230,7 +226,7 @@ async function answerCompactTool(st: State, $: EngineInterface, agentId: string 
 export const register: Register = (on: On, options: PluginOptions) => {
   const st: State = {
     config: resolveOptions(options as Record<string, unknown>),
-    typeById: new Map(),
+    types: new AgentTypes(),
     models: new Map(),
     parties: new Parties(),
     asked: new Set(),
@@ -297,8 +293,15 @@ export const register: Register = (on: On, options: PluginOptions) => {
     return result;
   });
 
+  // Every sub-agent's start names its type; a Workflow run's agents are never in $.agent.list(), so this is their only source.
+  on('classic.SubagentStart', async ($, e, next) => {
+    st.types.learn(e.agent_id, e.agent_type);
+    return next(e);
+  });
+
   // A sub-agent that sent its marker alone ended its run: arm it and refuse the stop once, so it compacts and carries on.
   on('classic.SubagentStop', async ($, e, next) => {
+    st.types.learn(e.agent_id, e.agent_type);
     try {
       const focus = stopRequest({ lastMessage: e.last_assistant_message, continued: st.parties.continued(e.agent_id) });
       if (focus !== undefined) {

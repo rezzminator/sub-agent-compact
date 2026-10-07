@@ -114,3 +114,25 @@ export class AgentPolicies {
     return this.nameIndex;
   }
 }
+
+/**
+ * Each sub-agent's type by id. A type the engine announced (SubagentStart,
+ * SubagentStop) comes first: a Workflow run's agents are never in
+ * `$.agent.list()`, so the announcement is their only source. Otherwise the
+ * list is asked once per id it names; an id neither names is an engine loop.
+ */
+export class AgentTypes {
+  private readonly byId = new Map<string, string>();
+
+  learn(id: string, type: string): void {
+    if (id && type) this.byId.set(id, type);
+  }
+
+  async of(id: string, list: () => Promise<readonly { id: string; type: string }[]>): Promise<string | undefined> {
+    const known = this.byId.get(id);
+    if (known) return known;
+    const agent = (await list()).find((info) => info.id === id);
+    if (agent) this.byId.set(id, agent.type);
+    return agent?.type;
+  }
+}

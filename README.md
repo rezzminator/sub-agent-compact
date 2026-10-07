@@ -139,6 +139,9 @@ Guards keep this honest:
   or a message from another chat cancels nothing.
 - The main chat's nudges tell its model that a person waiting on an answer
   comes first: it never compacts while you wait.
+- A Workflow run's agents get the sub-agent policy like any other: their
+  type comes from Claude Code's `SubagentStart` hook, since
+  `$.agent.list()` never names them.
 - An engine loop that is not one of the session's sub-agents (a fork
   Claude Code runs itself) is left to Claude Code's own point: never nudged,
   armed or held.
