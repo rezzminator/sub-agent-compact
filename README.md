@@ -5,7 +5,7 @@
 **Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.**
 
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
-[![Version](https://img.shields.io/badge/version-0.2.5-blue)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.6-blue)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen)](#development)
 [![Built with Professor](https://img.shields.io/badge/built%20with-Professor-8A2BE2)](https://github.com/rezzminator/professor)
@@ -139,6 +139,9 @@ Guards keep this honest:
   or a message from another chat cancels nothing.
 - The main chat's nudges tell its model that a person waiting on an answer
   comes first: it never compacts while you wait.
+- A Workflow run's agents get the sub-agent policy like any other: their
+  type comes from Claude Code's `SubagentStart` hook, since
+  `$.agent.list()` never names them.
 - An engine loop that is not one of the session's sub-agents (a fork
   Claude Code runs itself) is left to Claude Code's own point: never nudged,
   armed or held.
