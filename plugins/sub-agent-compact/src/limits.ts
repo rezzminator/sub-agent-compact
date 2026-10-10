@@ -16,6 +16,9 @@ export type Policy = {
 export const DEFAULT_MAIN: Policy = { enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } };
 export const DEFAULT_SUBAGENT: Policy = { enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } };
 
+/** A sub-agent's brief is seated back after the summary at every compaction. */
+export const DEFAULT_KEEP_BRIEF = true;
+
 export type Parse<T> = { ok: true; value: T } | { ok: false; error: string };
 
 const SIZE = /^(\d+(?:\.\d+)?|\.\d+)\s*([km%])?$/i;
@@ -110,6 +113,8 @@ export function readPolicy(
 export type ResolvedOptions = {
   main: Policy;
   subagent: Policy;
+  /** Seat a sub-agent's brief back after the summary at each of its compactions. */
+  keepBrief: boolean;
   agentDirs: string[];
   logFile?: string;
   /** One line per option that was invalid and fell back; empty when all were valid. */
@@ -137,6 +142,12 @@ export function resolveOptions(options: Record<string, unknown>): ResolvedOption
     ).policy;
   const main = party('main', DEFAULT_MAIN);
   const subagent = party('subagent', DEFAULT_SUBAGENT);
+  let keepBrief = DEFAULT_KEEP_BRIEF;
+  if (options.subagentKeepBrief !== undefined && options.subagentKeepBrief !== '') {
+    const parsed = parseEnabled(options.subagentKeepBrief);
+    if (parsed.ok) keepBrief = parsed.value;
+    else errors.push(`sub-agent-compact: option subagentKeepBrief is invalid (${parsed.error}); using the default ${DEFAULT_KEEP_BRIEF}`);
+  }
   const agentDirs = dirList(options.agentDirs, errors);
   let logFile: string | undefined;
   const rawLog = options.logFile;
@@ -144,5 +155,5 @@ export function resolveOptions(options: Record<string, unknown>): ResolvedOption
     if (rawLog.trim().startsWith('/')) logFile = rawLog.trim();
     else errors.push(`sub-agent-compact: option logFile must be an absolute path (got ${JSON.stringify(rawLog)}); logging off`);
   }
-  return { main, subagent, agentDirs, ...(logFile ? { logFile } : {}), errors };
+  return { main, subagent, keepBrief, agentDirs, ...(logFile ? { logFile } : {}), errors };
 }

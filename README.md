@@ -149,6 +149,18 @@ Guards keep this honest:
 - An engine loop that is not one of the session's sub-agents (a fork
   Claude Code runs itself) is left to Claude Code's own point: never nudged,
   armed or held.
+- **A sub-agent keeps its brief.** Claude Code replaces a sub-agent's first
+  message, the prompt its parent passed, with the summary, so exact paths,
+  acceptance rows and standing rules would survive only as the summarizer's
+  paraphrase. After each of its compactions the plugin seats that prompt
+  again, verbatim, as the message right after the summary
+  (`subagentKeepBrief`, on by default; the main chat is untouched). The
+  seated message opens with one marker line, so a later compaction finds
+  it: the sub-agent holds exactly one copy however often it compacts.
+  Past 64k tokens (characters / 4, the bound Codex keeps user messages to)
+  the head up to that size is kept, followed by one line saying where the
+  brief was cut. A skipped compaction is left as it is; an error in seating
+  is logged and the compaction stands as Claude Code made it.
 - A lookup that fails is logged, and the compaction goes through. The
   plugin never holds a compaction because of its own error.
 
@@ -175,6 +187,7 @@ name and replaced by the default, never ignored silently.
 | `subagentAutoCompactNudgeStart` | `20%` | A sub-agent's first nudge. |
 | `subagentAutoCompactNudgeEvery` | `10%` | The step between a sub-agent's nudges. |
 | `subagentAutoCompactEnabled` | `true` | Off: sub-agents are never nudged or compacted automatically; their own requests still run. |
+| `subagentKeepBrief` | `true` | On: after each compaction a sub-agent's brief is seated again verbatim right after the summary. Off: the summary alone stands for it. |
 | `agentDirs` | empty | Comma-separated extra directories of agent definitions. |
 | `logFile` | empty | Absolute path of the JSONL decision log. Each session writes its own file: `decisions.jsonl` becomes `decisions.{session-id}.jsonl`. |
 
@@ -320,6 +333,7 @@ Work lands on `develop`; `main` holds only releases, and each one is tagged `sub
 | `agents.ts` | Resolves an agent type to its policy |
 | `window.ts` | Model windows and Claude Code's ask point |
 | `nudge.ts` | Nudge levels and text, the `<compact-now>` marker, the compact tool's reply |
+| `brief.ts` | Seats a sub-agent's brief back after the summary, once, up to 64k tokens |
 | `parties.ts` | Per-party state: readings, the armed focus, nudges sent, a refused stop |
 | `decide.ts` | The decision for one compaction request |
 

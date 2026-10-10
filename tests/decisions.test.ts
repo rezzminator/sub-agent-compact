@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AgentPolicies, type AgentFs } from '../plugins/sub-agent-compact/src/agents.ts';
 import { compactionEnd, contextTokens, currentTokens, decide, estimateTranscript, personPrompt } from '../plugins/sub-agent-compact/src/decide.ts';
 import { parseFrontmatter } from '../plugins/sub-agent-compact/src/frontmatter.ts';
-import { DEFAULT_MAIN, DEFAULT_SUBAGENT, parseEnabled, parseSize, resolveOptions, sizeTokens } from '../plugins/sub-agent-compact/src/limits.ts';
+import { DEFAULT_KEEP_BRIEF, DEFAULT_MAIN, DEFAULT_SUBAGENT, parseEnabled, parseSize, resolveOptions, sizeTokens } from '../plugins/sub-agent-compact/src/limits.ts';
 
 describe('parseSize', () => {
   it.each([
@@ -46,7 +46,8 @@ describe('parseEnabled', () => {
 
 describe('resolveOptions', () => {
   it('defaults when nothing is set', () => {
-    expect(resolveOptions({})).toEqual({ main: DEFAULT_MAIN, subagent: DEFAULT_SUBAGENT, agentDirs: [], errors: [] });
+    expect(resolveOptions({})).toEqual({ main: DEFAULT_MAIN, subagent: DEFAULT_SUBAGENT, keepBrief: true, agentDirs: [], errors: [] });
+    expect(DEFAULT_KEEP_BRIEF).toBe(true);
     expect(DEFAULT_MAIN).toEqual({ enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } });
     expect(DEFAULT_SUBAGENT).toEqual({ enabled: true, autoCompact: { percent: 60 }, nudgeStart: { percent: 20 }, nudgeEvery: { percent: 10 } });
   });
@@ -61,12 +62,14 @@ describe('resolveOptions', () => {
       subagentAutoCompactNudgeStart: '40k',
       subagentAutoCompactNudgeEvery: '5%',
       subagentAutoCompactEnabled: true,
+      subagentKeepBrief: 'off',
       agentDirs: 'a, /b/c ,',
       logFile: '/tmp/x.jsonl',
     });
     expect(options).toEqual({
       main: { enabled: false, autoCompact: { tokens: 600000 }, nudgeStart: { percent: 25 }, nudgeEvery: { tokens: 50000 } },
       subagent: { enabled: true, autoCompact: { tokens: 90000 }, nudgeStart: { tokens: 40000 }, nudgeEvery: { percent: 5 } },
+      keepBrief: false,
       agentDirs: ['a', '/b/c'],
       logFile: '/tmp/x.jsonl',
       errors: [],
@@ -75,16 +78,18 @@ describe('resolveOptions', () => {
   });
 
   it('falls back on a bad value and names it, never silently', () => {
-    const options = resolveOptions({ mainAutoCompact: 'lots', subagentAutoCompact: '-3', subagentAutoCompactEnabled: 'maybe', logFile: 'relative.jsonl' });
+    const options = resolveOptions({ mainAutoCompact: 'lots', subagentAutoCompact: '-3', subagentAutoCompactEnabled: 'maybe', subagentKeepBrief: 'sometimes', logFile: 'relative.jsonl' });
     expect(options.main.autoCompact).toEqual(DEFAULT_MAIN.autoCompact);
     expect(options.subagent.autoCompact).toEqual(DEFAULT_SUBAGENT.autoCompact);
     expect(options.subagent.enabled).toBe(true);
+    expect(options.keepBrief).toBe(true);
     expect(options.logFile).toBeUndefined();
-    expect(options.errors).toHaveLength(4);
+    expect(options.errors).toHaveLength(5);
     expect(options.errors[0]).toMatch(/mainAutoCompact is invalid.*"lots".*60%/);
     expect(options.errors[1]).toMatch(/subagentAutoCompact is invalid/);
     expect(options.errors[2]).toMatch(/subagentAutoCompactEnabled is invalid.*"maybe".*true/);
-    expect(options.errors[3]).toMatch(/logFile must be an absolute path/);
+    expect(options.errors[3]).toMatch(/subagentKeepBrief is invalid.*"sometimes".*true/);
+    expect(options.errors[4]).toMatch(/logFile must be an absolute path/);
   });
 });
 

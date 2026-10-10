@@ -74,6 +74,12 @@
       "description": "Off: a sub-agent whose definition does not set it (frontmatter overrides it) is never nudged or compacted automatically; its own request to compact still runs.",
       "default": true
     },
+    "subagentKeepBrief": {
+      "type": "boolean",
+      "title": "Sub-agent: keep its brief",
+      "description": "On: after each compaction a sub-agent's brief, the prompt its parent passed, is seated again verbatim right after the summary, up to 64k tokens. Off: the summary alone stands for it.",
+      "default": true
+    },
     "agentDirs": {
       "type": "string",
       "title": "Extra agent-definition directories",

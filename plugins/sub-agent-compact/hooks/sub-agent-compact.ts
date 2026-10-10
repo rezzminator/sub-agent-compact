@@ -1,4 +1,5 @@
 import type { EngineInterface, On, PluginOptions, Register } from 'claude-code';
+import { BRIEF_MAX_TOKENS, reseatBrief } from '../src/brief.ts';
 import { AgentPolicies, AgentTypes } from '../src/agents.ts';
 import { compactionEnd, contextTokens, currentTokens, decide, personPrompt } from '../src/decide.ts';
 import { resolveOptions, sizeTokens, type Policy, type ResolvedOptions } from '../src/limits.ts';
@@ -385,6 +386,19 @@ export const register: Register = (on: On, options: PluginOptions) => {
     const end = compactionEnd({ trigger: e.trigger, skipped: outcome.skip !== undefined, aborted: false });
     if (end === 'compacted' && outcome.skip === undefined) st.parties.compacted(key, outcome.tokensAfter);
     else if (end === 'unfinished') dropArm('skipped');
+    // A sub-agent's brief is its first message, which the summary replaces: seat it back right after the summary.
+    if (agentId && st.config.keepBrief && outcome.skip === undefined) {
+      try {
+        const messages = reseatBrief(e.messages, outcome.messages, BRIEF_MAX_TOKENS);
+        if (messages !== outcome.messages) {
+          record(st, $, { event: 'brief-seated', party: key, type: party.label, messages: messages.length, chars: messages[1]?.text.length ?? null });
+          return { ...outcome, messages };
+        }
+      } catch (error) {
+        $.ui.log(`sub-agent-compact: seating the brief of sub-agent ${agentId} failed: ${message(error)}; leaving the compaction as Claude Code made it`);
+        record(st, $, { event: 'brief-error', party: key, error: message(error) });
+      }
+    }
     return outcome;
   });
 
