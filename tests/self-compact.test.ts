@@ -9,9 +9,16 @@ describe('modelWindow', () => {
     expect(modelWindow('claude-sonnet-5', 200_000)).toBe(1_000_000);
   });
 
-  it('falls back to the given window for a model it does not know, or none', () => {
+  it('falls back to the given window for a Claude model it does not know, or none', () => {
     expect(modelWindow('claude-opus-5-5', 400_000)).toBe(400_000);
+    expect(modelWindow('us.anthropic.claude-opus-5-5', 400_000)).toBe(400_000);
+    expect(modelWindow('opus', 400_000)).toBe(400_000);
     expect(modelWindow(undefined, 400_000)).toBe(400_000);
+  });
+
+  it("gives a model that is not Claude, such as a GPT model behind a gateway, Claude Code's default 200k", () => {
+    expect(modelWindow('gpt-6-sol', 1_000_000)).toBe(200_000);
+    expect(modelWindow('gpt-6-luna', 400_000)).toBe(200_000);
   });
 });
 

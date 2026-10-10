@@ -219,7 +219,9 @@ You read files...
 
 Percentages are of each model's own window. The main chat's comes from
 Claude Code. A sub-agent's comes from its model id: Haiku 200k, Sonnet 5 and
-any `[1m]` model 1M, and any other model gets the main chat's window.
+any `[1m]` model 1M, a model that is not Claude (a GPT model behind a
+gateway) Claude Code's 200k default, and any other Claude model the main
+chat's window.
 
 ### The window rule
 
