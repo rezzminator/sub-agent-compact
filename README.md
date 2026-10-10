@@ -5,7 +5,7 @@
 **Smart auto-compact for Claude Code: a separate compaction point for every sub-agent, and self-compaction at a milestone the model chooses.**
 
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
-[![Version](https://img.shields.io/badge/version-0.2.6-blue)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen)](#development)
 [![Built with Professor](https://img.shields.io/badge/built%20with-Professor-8A2BE2)](https://github.com/rezzminator/professor)
@@ -131,6 +131,10 @@ Guards keep this honest:
 - A sub-agent that sends the marker alone would end its own run, because a
   response without a tool call is its final answer. The plugin refuses that
   stop once, and the agent carries on and compacts.
+- A self-compaction is refused below the party's first nudge point
+  (`mainAutoCompactNudgeStart`, `subagentAutoCompactNudgeStart`): there it
+  throws away more working context than it saves. The model is told so and
+  carries on.
 - You can always call a self-compaction off. A message you send cancels a
   compaction the main chat armed, and the model is told not to ask again
   until your ask is done. An interrupt (Esc or Ctrl+C) during an armed
@@ -145,6 +149,18 @@ Guards keep this honest:
 - An engine loop that is not one of the session's sub-agents (a fork
   Claude Code runs itself) is left to Claude Code's own point: never nudged,
   armed or held.
+- **A sub-agent keeps its brief.** Claude Code replaces a sub-agent's first
+  message, the prompt its parent passed, with the summary, so exact paths,
+  acceptance rows and standing rules would survive only as the summarizer's
+  paraphrase. After each of its compactions the plugin seats that prompt
+  again, verbatim, as the message right after the summary
+  (`subagentKeepBrief`, on by default; the main chat is untouched). The
+  seated message opens with one marker line, so a later compaction finds
+  it: the sub-agent holds exactly one copy however often it compacts.
+  Past 64k tokens (characters / 4, the bound Codex keeps user messages to)
+  the head up to that size is kept, followed by one line saying where the
+  brief was cut. A skipped compaction is left as it is; an error in seating
+  is logged and the compaction stands as Claude Code made it.
 - A lookup that fails is logged, and the compaction goes through. The
   plugin never holds a compaction because of its own error.
 
@@ -171,6 +187,7 @@ name and replaced by the default, never ignored silently.
 | `subagentAutoCompactNudgeStart` | `20%` | A sub-agent's first nudge. |
 | `subagentAutoCompactNudgeEvery` | `10%` | The step between a sub-agent's nudges. |
 | `subagentAutoCompactEnabled` | `true` | Off: sub-agents are never nudged or compacted automatically; their own requests still run. |
+| `subagentKeepBrief` | `true` | On: after each compaction a sub-agent's brief is seated again verbatim right after the summary. Off: the summary alone stands for it. |
 | `agentDirs` | empty | Comma-separated extra directories of agent definitions. |
 | `logFile` | empty | Absolute path of the JSONL decision log. Each session writes its own file: `decisions.jsonl` becomes `decisions.{session-id}.jsonl`. |
 
@@ -215,7 +232,9 @@ You read files...
 
 Percentages are of each model's own window. The main chat's comes from
 Claude Code. A sub-agent's comes from its model id: Haiku 200k, Sonnet 5 and
-any `[1m]` model 1M, and any other model gets the main chat's window.
+any `[1m]` model 1M, a model that is not Claude (a GPT model behind a
+gateway) Claude Code's 200k default, and any other Claude model the main
+chat's window.
 
 ### The window rule
 
@@ -256,7 +275,8 @@ $12.20.
 
 Yes, that's the self-compaction feature. The main chat calls the `compact`
 tool. A sub-agent writes `<compact-now>focus</compact-now>` alongside its
-next tool call. In both cases the focus tells the summarizer what to keep.
+next tool call. In both cases the focus tells the summarizer what to keep. It
+only arms once the context has passed the first nudge point.
 </details>
 
 <details>
@@ -313,6 +333,7 @@ Work lands on `develop`; `main` holds only releases, and each one is tagged `sub
 | `agents.ts` | Resolves an agent type to its policy |
 | `window.ts` | Model windows and Claude Code's ask point |
 | `nudge.ts` | Nudge levels and text, the `<compact-now>` marker, the compact tool's reply |
+| `brief.ts` | Seats a sub-agent's brief back after the summary, once, up to 64k tokens |
 | `parties.ts` | Per-party state: readings, the armed focus, nudges sent, a refused stop |
 | `decide.ts` | The decision for one compaction request |
 
